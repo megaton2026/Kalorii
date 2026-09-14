@@ -46,6 +46,8 @@
   .adder h2{font-size:0.8rem;color:var(--muted);font-weight:650;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.03em;}
   select,input{font-family:inherit;font-size:0.95rem;border:1px solid var(--line);border-radius:9px;padding:11px;width:100%;background:var(--paper);color:var(--ink);}
   .row{display:flex;gap:8px;margin-bottom:8px;}
+  #customBlock label{flex:1;font-size:0.78rem;color:var(--muted);display:block;}
+  #customBlock label input{margin-top:4px;}
   .calc{font-size:0.82rem;color:var(--muted);min-height:18px;margin:2px 2px 8px;}
   .addbtn{width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:inherit;}
   .addbtn:active{opacity:.85;}
@@ -158,14 +160,22 @@
     </div>
     <div id="customBlock" style="display:none;">
       <div class="row">
-        <input id="customName" placeholder="назва страви">
+        <label>Назва страви
+          <input id="customName" placeholder="напр. Куряча грудка з рисом">
+        </label>
       </div>
       <div class="row">
-        <input id="customGrams" type="number" inputmode="numeric" placeholder="вага, г (необов'язково)">
-        <input id="customKcal" type="number" inputmode="numeric" placeholder="ккал">
+        <label>Вага, г (необов'язково)
+          <input id="customGrams" type="number" inputmode="numeric" placeholder="—">
+        </label>
+        <label>Калорії, ккал
+          <input id="customKcal" type="number" inputmode="numeric" placeholder="0">
+        </label>
       </div>
       <div class="row">
-        <input id="customProt" type="number" inputmode="decimal" placeholder="білок, г (необов'язково)">
+        <label>Білок, г (необов'язково)
+          <input id="customProt" type="number" inputmode="decimal" placeholder="—">
+        </label>
       </div>
     </div>
     <div class="calc" id="calcPreview"></div>
