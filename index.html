@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Щоденник калорій</title>
+<style>
+  :root{
+    --paper:#fbfaf7; --ink:#1c2420; --muted:#7b857f; --line:#e6e3db;
+    --green:#2f6b4f; --green-soft:#eaf2ec; --red:#b0483a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--paper);color:var(--ink);line-height:1.4;padding:0 0 40px;}
+  .wrap{max-width:640px;margin:0 auto;padding:0 16px;}
+  header{padding:22px 0 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  h1{font-size:1.3rem;font-weight:680;letter-spacing:-0.01em;}
+  .gear{background:none;border:1px solid var(--line);border-radius:9px;color:var(--muted);
+    font-size:1rem;padding:7px 10px;cursor:pointer;line-height:1;}
+  .datebar{display:flex;align-items:center;justify-content:space-between;margin-top:10px;
+    background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;}
+  .datebar button{background:none;border:none;font-size:1.3rem;color:var(--green);cursor:pointer;padding:0 12px;line-height:1;}
+  .datebar .d{font-size:0.95rem;font-weight:600;}
+  .settings{margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;display:none;}
+  .settings.show{display:block;}
+  .settings h2{font-size:0.8rem;color:var(--muted);font-weight:650;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.03em;}
+  .settings .row{display:flex;gap:8px;}
+  .settings label{flex:1;font-size:0.8rem;color:var(--muted);}
+  .settings input{margin-top:4px;}
+  .summary{margin-top:14px;background:var(--green-soft);border-radius:14px;padding:16px;}
+  .totrow{display:flex;justify-content:space-between;align-items:flex-end;}
+  .kcal{font-size:2rem;font-weight:750;letter-spacing:-0.02em;color:var(--green);}
+  .kcal small{font-size:0.9rem;font-weight:500;color:var(--muted);}
+  .prot{font-size:0.95rem;font-weight:600;color:#3a4a41;text-align:right;}
+  .bar{height:8px;background:#d5e2d9;border-radius:5px;margin-top:12px;overflow:hidden;}
+  .bar > div{height:100%;background:var(--green);border-radius:5px;transition:width .3s;}
+  .barlbl{font-size:0.76rem;color:var(--muted);margin-top:5px;}
+  .adder{margin-top:18px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .adder h2{font-size:0.8rem;color:var(--muted);font-weight:650;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.03em;}
+  select,input{font-family:inherit;font-size:0.95rem;border:1px solid var(--line);border-radius:9px;padding:11px;width:100%;background:var(--paper);color:var(--ink);}
+  .row{display:flex;gap:8px;margin-bottom:8px;}
+  .row .g{flex:0 0 110px;}
+  .calc{font-size:0.82rem;color:var(--muted);min-height:18px;margin:2px 2px 8px;}
+  .addbtn{width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:inherit;}
+  .addbtn:active{opacity:.85;}
+  .meal-tag{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+  .meal-tag button{flex:1;min-width:70px;font-size:0.8rem;padding:8px 4px;border:1px solid var(--line);background:var(--paper);border-radius:8px;cursor:pointer;color:var(--muted);font-family:inherit;}
+  .meal-tag button.sel{background:var(--green);color:#fff;border-color:var(--green);}
+  .log{margin-top:18px;}
+  .log h2{font-size:0.8rem;color:var(--muted);font-weight:650;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.03em;}
+  .entry{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--line);}
+  .entry .info{flex:1;min-width:0;}
+  .entry .nm{font-size:0.95rem;font-weight:500;}
+  .entry .sub{font-size:0.78rem;color:var(--muted);}
+  .entry .mc{font-size:0.9rem;font-weight:600;white-space:nowrap;}
+  .entry .del{background:none;border:none;color:#c7b0ac;font-size:1.2rem;cursor:pointer;padding:0 4px;}
+  .grouplbl{font-size:0.72rem;color:var(--green);font-weight:650;margin:12px 0 2px;text-transform:uppercase;letter-spacing:0.04em;}
+  .empty{color:var(--muted);font-size:0.9rem;padding:20px 4px;text-align:center;}
+  .note{font-size:0.75rem;color:var(--muted);margin-top:18px;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Щоденник калорій</h1>
+    <button class="gear" id="gearBtn" type="button" title="Налаштування цілей">⚙</button>
+  </header>
+
+  <div class="datebar">
+    <button onclick="shiftDay(-1)">‹</button>
+    <div class="d" id="dlabel"></div>
+    <button onclick="shiftDay(1)">›</button>
+  </div>
+
+  <div class="settings" id="settingsBox">
+    <h2>Денна ціль</h2>
+    <div class="row">
+      <label>Калорії, ккал
+        <input id="tgtKcal" type="number" inputmode="numeric" min="0">
+      </label>
+      <label>Білок, г
+        <input id="tgtProt" type="number" inputmode="numeric" min="0">
+      </label>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="totrow">
+      <div class="kcal"><span id="kcalNum">0</span> <small>/ <span id="kcalTgt">2137</span> ккал</small></div>
+      <div class="prot">білок<br><span id="protNum">0</span> / <span id="protTgt">140</span> г</div>
+    </div>
+    <div class="bar"><div id="kcalBar" style="width:0%"></div></div>
+    <div class="barlbl" id="remain"></div>
+  </div>
+
+  <div class="adder">
+    <h2>Додати їжу</h2>
+    <div class="meal-tag" id="mealTag">
+      <button data-m="Сніданок" class="sel">Сніданок</button>
+      <button data-m="Обід">Обід</button>
+      <button data-m="Перекус">Перекус</button>
+      <button data-m="Вечеря">Вечеря</button>
+    </div>
+    <div class="row">
+      <select id="food" onchange="updCalc()"></select>
+    </div>
+    <div class="row">
+      <input class="g" id="grams" type="number" inputmode="numeric" placeholder="грами" oninput="updCalc()">
+      <input id="customName" placeholder="назва (для «інше»)" style="display:none;">
+    </div>
+    <div class="row" id="customProtRow" style="display:none;">
+      <input id="customProt" type="number" inputmode="decimal" placeholder="білок, г (необов'язково)">
+    </div>
+    <div class="calc" id="calcPreview"></div>
+    <button class="addbtn" onclick="addEntry()">＋ Додати</button>
+  </div>
+
+  <div class="log">
+    <h2>Записи за день</h2>
+    <div id="entries"></div>
+  </div>
+
+  <div class="note">Дані зберігаються на цьому пристрої між днями. Ваги — у готовому вигляді (крупи варені, риба сира).</div>
+</div>
+
+<script>
+// per 100 g unless unit=шт: [kcal, protein, unit?]
+const FOODS = {
+  "Яйця смажені (шт)":      [95, 6.3, "шт"],
+  "Яйця варені (шт)":       [78, 6.3, "шт"],
+  "Гречка варена":          [95, 3.6],
+  "Вівсянка суха":          [380, 13],
+  "Рис варений":            [130, 2.7],
+  "Кіноа варена":           [120, 4.4],
+  "Сочевиця варена":        [116, 9],
+  "Червона квасоля (консерв.)": [101, 8.1],
+  "Картопля варена":        [87, 2],
+  "Лосось":                 [208, 20],
+  "Скумбрія":               [205, 19],
+  "Тріска / хек":           [82, 18],
+  "Сир кисломолочний 5%":   [121, 17],
+  "Кефір":                  [53, 3.4],
+  "Банан":                  [89, 1.1],
+  "Ягоди":                  [52, 0.7],
+  "Малина":                 [52, 1.2],
+  "Горіхи волоські":        [654, 15],
+  "Олія оливкова":          [884, 0],
+  "Хліб цільнозерновий":    [247, 9],
+  "Зефір":                  [325, 0.8],
+  "Чорний шоколад":         [598, 7.8],
+  "Протеїн-ізолят":         [373, 90],
+  "Інше (ввести вручну)":   [null, null],
+};
+
+const DEFAULT_TGT_KCAL = 2137, DEFAULT_TGT_PROT = 140;
+const TARGETS_KEY = "calTracker:targets";
+let TGT_KCAL = DEFAULT_TGT_KCAL, TGT_PROT = DEFAULT_TGT_PROT;
+let curDate = new Date();
+let selMeal = "Сніданок";
+let dayData = {entries:[]};
+
+function pad2(n){ return String(n).padStart(2,"0"); }
+function dkey(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+function todayKey(){ return dkey(new Date()); }
+function storeKey(d){ return "diary:" + dkey(d); }
+
+function loadTargets(){
+  try{
+    const raw = localStorage.getItem(TARGETS_KEY);
+    if(raw){
+      const t = JSON.parse(raw);
+      if(t.kcal>0) TGT_KCAL = t.kcal;
+      if(t.prot>0) TGT_PROT = t.prot;
+    }
+  }catch(e){}
+  document.getElementById("tgtKcal").value = TGT_KCAL;
+  document.getElementById("tgtProt").value = TGT_PROT;
+  document.getElementById("kcalTgt").textContent = TGT_KCAL;
+  document.getElementById("protTgt").textContent = TGT_PROT;
+}
+function saveTargets(){
+  const k = parseFloat(document.getElementById("tgtKcal").value) || DEFAULT_TGT_KCAL;
+  const p = parseFloat(document.getElementById("tgtProt").value) || DEFAULT_TGT_PROT;
+  TGT_KCAL = k; TGT_PROT = p;
+  document.getElementById("kcalTgt").textContent = TGT_KCAL;
+  document.getElementById("protTgt").textContent = TGT_PROT;
+  try{ localStorage.setItem(TARGETS_KEY, JSON.stringify({kcal:k, prot:p})); }catch(e){}
+  render();
+}
+document.getElementById("gearBtn").onclick = () => {
+  document.getElementById("settingsBox").classList.toggle("show");
+};
+document.getElementById("tgtKcal").addEventListener("change", saveTargets);
+document.getElementById("tgtProt").addEventListener("change", saveTargets);
+
+// populate food dropdown
+const foodSel = document.getElementById("food");
+Object.keys(FOODS).forEach(f => {
+  const o = document.createElement("option"); o.value=f; o.textContent=f; foodSel.appendChild(o);
+});
+
+document.querySelectorAll("#mealTag button").forEach(b=>{
+  b.onclick=()=>{ document.querySelectorAll("#mealTag button").forEach(x=>x.classList.remove("sel"));
+    b.classList.add("sel"); selMeal=b.dataset.m; };
+});
+
+function isUnit(f){ return FOODS[f] && FOODS[f][2]==="шт"; }
+function isCustom(f){ return f==="Інше (ввести вручну)"; }
+function updCalc(){
+  const f=foodSel.value, g=parseFloat(document.getElementById("grams").value)||0;
+  const cn=document.getElementById("customName");
+  const cp=document.getElementById("customProtRow");
+  const gi=document.getElementById("grams");
+  if(isCustom(f)){
+    cn.style.display="block"; cp.style.display="block";
+    gi.placeholder="ккал";
+    document.getElementById("calcPreview").textContent="Введи назву, калорії (в полі «грами») і, за бажанням, білок";
+    return;
+  }
+  cn.style.display="none"; cp.style.display="none";
+  gi.placeholder = isUnit(f)?"штук":"грами";
+  if(!g){ document.getElementById("calcPreview").textContent=""; return; }
+  const [k,p]=calcFood(f,g);
+  document.getElementById("calcPreview").textContent = `≈ ${Math.round(k)} ккал · ${p.toFixed(1)} г білка`;
+}
+function calcFood(f,g){
+  const d=FOODS[f]; if(!d||d[0]==null) return [g,0];
+  if(d[2]==="шт") return [d[0]*g, d[1]*g];
+  return [d[0]*g/100, d[1]*g/100];
+}
+
+function load(){
+  document.getElementById("dlabel").textContent = fmtDate(curDate);
+  let data=null;
+  try{
+    const raw = localStorage.getItem(storeKey(curDate));
+    if(raw) data = JSON.parse(raw);
+  }catch(e){}
+  dayData = data || {entries:[]};
+  render();
+}
+function save(){
+  try{
+    localStorage.setItem(storeKey(curDate), JSON.stringify(dayData));
+  }catch(e){
+    alert("Не вдалося зберегти запис на цьому пристрої.");
+  }
+}
+function addEntry(){
+  const f=foodSel.value, g=parseFloat(document.getElementById("grams").value)||0;
+  if(!g) return;
+  let name, detail, kcal, prot;
+  if(isCustom(f)){
+    name=document.getElementById("customName").value.trim()||"Інше";
+    detail=""; kcal=Math.round(g);
+    prot=Math.round((parseFloat(document.getElementById("customProt").value)||0)*10)/10;
+  }else{
+    const [k,p]=calcFood(f,g); kcal=Math.round(k); prot=Math.round(p*10)/10;
+    name=f.replace(" (шт)",""); detail = isUnit(f) ? g+" шт" : g+" г";
+  }
+  dayData.entries.push({meal:selMeal,name,detail,kcal,prot});
+  save();
+  document.getElementById("grams").value=""; document.getElementById("customName").value="";
+  document.getElementById("customProt").value="";
+  document.getElementById("calcPreview").textContent="";
+  render();
+}
+function delEntry(i){ dayData.entries.splice(i,1); save(); render(); }
+
+function render(){
+  const el=document.getElementById("entries"); el.innerHTML="";
+  let tk=0, tp=0;
+  const order=["Сніданок","Обід","Перекус","Вечеря"];
+  const byMeal={};
+  dayData.entries.forEach((e,i)=>{ (byMeal[e.meal]=byMeal[e.meal]||[]).push({...e,i}); tk+=e.kcal; tp+=e.prot; });
+  if(dayData.entries.length===0){
+    const empty=document.createElement("div"); empty.className="empty"; empty.textContent="Ще нічого не додано";
+    el.appendChild(empty);
+  }
+  order.forEach(m=>{
+    if(!byMeal[m]) return;
+    const lbl=document.createElement("div"); lbl.className="grouplbl"; lbl.textContent=m; el.appendChild(lbl);
+    byMeal[m].forEach(e=>{
+      const row=document.createElement("div"); row.className="entry";
+
+      const info=document.createElement("div"); info.className="info";
+      const nm=document.createElement("div"); nm.className="nm"; nm.textContent=e.name;
+      const sub=document.createElement("div"); sub.className="sub";
+      sub.textContent = `${e.detail}${e.detail?' · ':''}${e.prot} г білка`;
+      info.appendChild(nm); info.appendChild(sub);
+
+      const mc=document.createElement("div"); mc.className="mc"; mc.textContent=`${e.kcal} ккал`;
+
+      const del=document.createElement("button"); del.className="del"; del.textContent="×";
+      del.onclick=()=>delEntry(e.i);
+
+      row.appendChild(info); row.appendChild(mc); row.appendChild(del);
+      el.appendChild(row);
+    });
+  });
+  document.getElementById("kcalNum").textContent=Math.round(tk);
+  document.getElementById("protNum").textContent=Math.round(tp);
+  const pct=Math.min(100, tk/TGT_KCAL*100);
+  document.getElementById("kcalBar").style.width=pct+"%";
+  document.getElementById("kcalBar").style.background = tk>TGT_KCAL ? "var(--red)" : "var(--green)";
+  const left=TGT_KCAL-Math.round(tk);
+  document.getElementById("remain").textContent = left>=0 ? `залишилось ${left} ккал` : `перевищено на ${-left} ккал`;
+}
+
+function shiftDay(n){ curDate.setDate(curDate.getDate()+n); load(); }
+function fmtDate(d){
+  const days=["Нд","Пн","Вт","Ср","Чт","Пт","Сб"];
+  const t=dkey(d)===todayKey()?" · сьогодні":"";
+  return `${days[d.getDay()]}, ${d.getDate()}.${pad2(d.getMonth()+1)}${t}`;
+}
+loadTargets();
+load();
+</script>
+</body>
+</html>
