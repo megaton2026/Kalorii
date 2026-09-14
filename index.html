@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Щоденник калорій</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="theme-color" content="#2f6b4f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kalorii">
 <style>
   :root{
     --paper:#fbfaf7; --ink:#1c2420; --muted:#7b857f; --line:#e6e3db;
@@ -58,19 +65,34 @@
   .grouplbl{font-size:0.72rem;color:var(--green);font-weight:650;margin:12px 0 2px;text-transform:uppercase;letter-spacing:0.04em;}
   .empty{color:var(--muted);font-size:0.9rem;padding:20px 4px;text-align:center;}
   .note{font-size:0.75rem;color:var(--muted);margin-top:18px;text-align:center;}
+  .headerbtns{display:flex;gap:8px;}
+  .histrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line);cursor:pointer;background:none;border-left:none;border-right:none;border-top:none;width:100%;text-align:left;font-family:inherit;}
+  .histrow:last-child{border-bottom:none;}
+  .histrow .hd{font-size:0.9rem;font-weight:500;}
+  .histrow .hn{display:flex;gap:10px;font-size:0.85rem;color:var(--muted);white-space:nowrap;}
+  .histrow .hn b{color:var(--ink);font-weight:600;}
+  #historyList{max-height:50vh;overflow-y:auto;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Щоденник калорій</h1>
-    <button class="gear" id="gearBtn" type="button" title="Налаштування цілей">⚙</button>
+    <div class="headerbtns">
+      <button class="gear" id="historyBtn" type="button" title="Історія по днях">📜</button>
+      <button class="gear" id="gearBtn" type="button" title="Налаштування цілей">⚙</button>
+    </div>
   </header>
 
   <div class="datebar">
     <button onclick="shiftDay(-1)">‹</button>
     <div class="d" id="dlabel"></div>
     <button onclick="shiftDay(1)">›</button>
+  </div>
+
+  <div class="settings" id="historyBox">
+    <h2>Історія по днях</h2>
+    <div id="historyList"></div>
   </div>
 
   <div class="settings" id="settingsBox">
@@ -230,8 +252,57 @@ function loadApiSettings(){
   document.getElementById("apiModel").value = localStorage.getItem(API_MODEL_KEY) || DEFAULT_MODEL;
 }
 document.getElementById("gearBtn").onclick = () => {
+  document.getElementById("historyBox").classList.remove("show");
   document.getElementById("settingsBox").classList.toggle("show");
 };
+document.getElementById("historyBtn").onclick = () => {
+  document.getElementById("settingsBox").classList.remove("show");
+  const box = document.getElementById("historyBox");
+  box.classList.toggle("show");
+  if(box.classList.contains("show")) renderHistory();
+};
+
+function dayKeyToDate(key){
+  const [y,m,d] = key.split("-").map(Number);
+  return new Date(y, m-1, d);
+}
+function renderHistory(){
+  const list = document.getElementById("historyList");
+  list.innerHTML = "";
+  const days = [];
+  for(let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    if(!key || !key.startsWith("diary:")) continue;
+    let data;
+    try{ data = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
+    const entries = (data && data.entries) || [];
+    if(entries.length===0) continue;
+    let tk=0, tp=0;
+    entries.forEach(e => { tk+=e.kcal; tp+=e.prot; });
+    days.push({ dayStr: key.slice(6), kcal: Math.round(tk), prot: Math.round(tp) });
+  }
+  if(days.length===0){
+    list.innerHTML = '<div class="empty">Ще немає жодного збереженого дня</div>';
+    return;
+  }
+  days.sort((a,b) => b.dayStr.localeCompare(a.dayStr));
+  days.forEach(d => {
+    const date = dayKeyToDate(d.dayStr);
+    const btn = document.createElement("button");
+    btn.className = "histrow";
+    btn.type = "button";
+    const hd = document.createElement("div"); hd.className="hd"; hd.textContent = fmtDate(date);
+    const hn = document.createElement("div"); hn.className="hn";
+    hn.innerHTML = `<span><b>${d.kcal}</b> ккал</span><span><b>${d.prot}</b> г білка</span>`;
+    btn.appendChild(hd); btn.appendChild(hn);
+    btn.onclick = () => {
+      curDate = date;
+      document.getElementById("historyBox").classList.remove("show");
+      load();
+    };
+    list.appendChild(btn);
+  });
+}
 document.getElementById("tgtKcal").addEventListener("change", saveTargets);
 document.getElementById("tgtProt").addEventListener("change", saveTargets);
 document.getElementById("apiKey").addEventListener("change", () => {
@@ -536,6 +607,9 @@ function fmtDate(d){
 loadTargets();
 loadApiSettings();
 load();
+if(navigator.storage && navigator.storage.persist){
+  navigator.storage.persist().catch(()=>{});
+}
 </script>
 </body>
 </html>
