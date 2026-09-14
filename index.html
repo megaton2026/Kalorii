@@ -99,6 +99,13 @@
       </label>
     </div>
     <div class="barlbl">Ключ зберігається лише в цьому браузері (localStorage) і надсилається напряму в Anthropic API з вашого пристрою — на жоден інший сервер не потрапляє.</div>
+    <h2 style="margin-top:14px;">Резервна копія</h2>
+    <div class="row">
+      <button type="button" class="photobtn" id="exportBtn" style="margin-bottom:0;">⬇ Експортувати дані</button>
+      <button type="button" class="photobtn" id="importBtn" style="margin-bottom:0;">⬆ Імпортувати дані</button>
+    </div>
+    <input type="file" id="importInput" accept="application/json" style="display:none;">
+    <div class="barlbl">Усі записи й цілі зберігаються тільки в цьому браузері. Робіть експорт час від часу (файл `.json`) — якщо браузер колись сам очистить сховище (наприклад, бракує місця), можна буде відновити записи з файлу.</div>
   </div>
 
   <div class="summary">
@@ -232,6 +239,64 @@ document.getElementById("apiKey").addEventListener("change", () => {
 });
 document.getElementById("apiModel").addEventListener("change", () => {
   try{ localStorage.setItem(API_MODEL_KEY, document.getElementById("apiModel").value); }catch(e){}
+});
+
+function exportData(){
+  const days = {};
+  for(let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    if(key && key.startsWith("diary:")){
+      try{ days[key.slice(6)] = JSON.parse(localStorage.getItem(key)); }catch(e){}
+    }
+  }
+  const backup = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    targets: { kcal: TGT_KCAL, prot: TGT_PROT },
+    days
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `kalorii-backup-${dkey(new Date())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importData(file){
+  const reader = new FileReader();
+  reader.onerror = () => alert("Не вдалося прочитати файл.");
+  reader.onload = () => {
+    let backup;
+    try{ backup = JSON.parse(reader.result); }catch(e){ alert("Файл пошкоджений або це не резервна копія."); return; }
+    if(!backup || typeof backup.days !== "object"){ alert("Файл пошкоджений або це не резервна копія."); return; }
+    const dayCount = Object.keys(backup.days).length;
+    if(!confirm(`Імпортувати ${dayCount} дн. записів? Наявні записи за ці дні буде замінено.`)) return;
+    try{
+      Object.keys(backup.days).forEach(day => {
+        localStorage.setItem("diary:" + day, JSON.stringify(backup.days[day]));
+      });
+      if(backup.targets && backup.targets.kcal>0 && backup.targets.prot>0){
+        localStorage.setItem(TARGETS_KEY, JSON.stringify(backup.targets));
+      }
+    }catch(e){ alert("Не вдалося зберегти дані на цьому пристрої."); return; }
+    loadTargets();
+    load();
+    alert("Дані імпортовано.");
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById("exportBtn").onclick = exportData;
+const importInput = document.getElementById("importInput");
+document.getElementById("importBtn").onclick = () => importInput.click();
+importInput.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if(file) importData(file);
 });
 
 // populate food dropdown
