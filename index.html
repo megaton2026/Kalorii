@@ -382,11 +382,47 @@ importInput.addEventListener("change", (e) => {
   if(file) importData(file);
 });
 
+const CUSTOM_LABEL = "Інше (ввести вручну)";
+const CUSTOM_FOODS_KEY = "calTracker:customFoods";
+let customFoods = {};
+function loadCustomFoods(){
+  try{
+    const raw = localStorage.getItem(CUSTOM_FOODS_KEY);
+    if(raw) customFoods = JSON.parse(raw) || {};
+  }catch(e){ customFoods = {}; }
+  Object.keys(customFoods).forEach(name => { FOODS[name] = customFoods[name]; });
+}
+function saveCustomFood(name, kcalPer100, protPer100){
+  if(!name || (FOODS[name] && !customFoods[name])) return; // don't overwrite a built-in food
+  customFoods[name] = [Math.round(kcalPer100*10)/10, Math.round(protPer100*10)/10];
+  FOODS[name] = customFoods[name];
+  try{ localStorage.setItem(CUSTOM_FOODS_KEY, JSON.stringify(customFoods)); }catch(e){}
+  rebuildFoodSelect();
+}
+
 // populate food dropdown
 const foodSel = document.getElementById("food");
-Object.keys(FOODS).forEach(f => {
-  const o = document.createElement("option"); o.value=f; o.textContent=f; foodSel.appendChild(o);
-});
+function rebuildFoodSelect(){
+  const prevValue = foodSel.value;
+  foodSel.innerHTML = "";
+  Object.keys(FOODS).forEach(f => {
+    if(f===CUSTOM_LABEL || customFoods[f]) return;
+    const o = document.createElement("option"); o.value=f; o.textContent=f; foodSel.appendChild(o);
+  });
+  const customNames = Object.keys(customFoods).sort((a,b) => a.localeCompare(b, "uk"));
+  if(customNames.length){
+    const grp = document.createElement("optgroup"); grp.label = "Мої страви (з фото/вручну)";
+    customNames.forEach(f => {
+      const o = document.createElement("option"); o.value=f; o.textContent=f; grp.appendChild(o);
+    });
+    foodSel.appendChild(grp);
+  }
+  const other = document.createElement("option"); other.value=CUSTOM_LABEL; other.textContent=CUSTOM_LABEL;
+  foodSel.appendChild(other);
+  if([...foodSel.options].some(o => o.value===prevValue)) foodSel.value = prevValue;
+}
+loadCustomFoods();
+rebuildFoodSelect();
 
 document.querySelectorAll("#mealTag button").forEach(b=>{
   b.onclick=()=>{ document.querySelectorAll("#mealTag button").forEach(x=>x.classList.remove("sel"));
@@ -394,7 +430,7 @@ document.querySelectorAll("#mealTag button").forEach(b=>{
 });
 
 function isUnit(f){ return FOODS[f] && FOODS[f][2]==="шт"; }
-function isCustom(f){ return f==="Інше (ввести вручну)"; }
+function isCustom(f){ return f===CUSTOM_LABEL; }
 function updCalc(){
   const f=foodSel.value;
   const gramsRow=document.getElementById("gramsRow");
@@ -444,10 +480,14 @@ function addEntry(){
   if(isCustom(f)){
     kcal = Math.round(parseFloat(document.getElementById("customKcal").value)||0);
     if(!kcal) return;
-    name = document.getElementById("customName").value.trim() || "Інше";
+    const typedName = document.getElementById("customName").value.trim();
+    name = typedName || "Інше";
     const gramsVal = parseFloat(document.getElementById("customGrams").value);
     detail = gramsVal>0 ? Math.round(gramsVal)+" г" : "";
     prot = Math.round((parseFloat(document.getElementById("customProt").value)||0)*10)/10;
+    if(typedName && gramsVal>0){
+      saveCustomFood(typedName, kcal/gramsVal*100, prot/gramsVal*100);
+    }
   }else{
     const g=parseFloat(document.getElementById("grams").value)||0;
     if(!g) return;
@@ -536,7 +576,7 @@ async function analyzeFoodPhoto(base64, mediaType, apiKey){
 }
 
 function applyPhotoResult(r){
-  foodSel.value = "Інше (ввести вручну)";
+  foodSel.value = CUSTOM_LABEL;
   updCalc();
   document.getElementById("customName").value = r.name || "Страва з фото";
   document.getElementById("customGrams").value = (typeof r.grams === "number") ? Math.round(r.grams) : "";
