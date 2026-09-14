@@ -228,6 +228,8 @@ let TGT_KCAL = DEFAULT_TGT_KCAL, TGT_PROT = DEFAULT_TGT_PROT;
 let curDate = new Date();
 let selMeal = "Сніданок";
 let dayData = {entries:[]};
+let customDensity = { kcalPerG: null, protPerG: null };
+function resetCustomDensity(){ customDensity = { kcalPerG: null, protPerG: null }; }
 
 function pad2(n){ return String(n).padStart(2,"0"); }
 function dkey(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
@@ -401,6 +403,7 @@ function updCalc(){
     gramsRow.style.display="none";
     customBlock.style.display="block";
     document.getElementById("calcPreview").textContent="";
+    resetCustomDensity();
     return;
   }
   gramsRow.style.display="flex";
@@ -460,6 +463,7 @@ function addEntry(){
   document.getElementById("customProt").value="";
   document.getElementById("calcPreview").textContent="";
   document.getElementById("photoStatus").textContent="";
+  resetCustomDensity();
   render();
 }
 
@@ -538,7 +542,29 @@ function applyPhotoResult(r){
   document.getElementById("customGrams").value = (typeof r.grams === "number") ? Math.round(r.grams) : "";
   document.getElementById("customKcal").value = Math.round(r.kcal);
   document.getElementById("customProt").value = (typeof r.protein === "number") ? Math.round(r.protein*10)/10 : "";
+  if(typeof r.grams === "number" && r.grams>0){
+    customDensity.kcalPerG = r.kcal / r.grams;
+    customDensity.protPerG = (typeof r.protein === "number" ? r.protein : 0) / r.grams;
+  }
 }
+
+const customGramsEl = document.getElementById("customGrams");
+const customKcalEl = document.getElementById("customKcal");
+const customProtEl = document.getElementById("customProt");
+customGramsEl.addEventListener("input", () => {
+  const g = parseFloat(customGramsEl.value);
+  if(customDensity.kcalPerG==null || !(g>0)) return;
+  customKcalEl.value = Math.round(g * customDensity.kcalPerG);
+  customProtEl.value = Math.round(g * customDensity.protPerG * 10) / 10;
+});
+customKcalEl.addEventListener("input", () => {
+  const g = parseFloat(customGramsEl.value), k = parseFloat(customKcalEl.value);
+  if(g>0 && !isNaN(k)) customDensity.kcalPerG = k / g;
+});
+customProtEl.addEventListener("input", () => {
+  const g = parseFloat(customGramsEl.value), pr = parseFloat(customProtEl.value);
+  if(g>0 && !isNaN(pr)) customDensity.protPerG = pr / g;
+});
 
 const photoInput = document.getElementById("photoInput");
 document.getElementById("photoBtn").onclick = () => photoInput.click();
