@@ -39,10 +39,11 @@
   .adder h2{font-size:0.8rem;color:var(--muted);font-weight:650;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.03em;}
   select,input{font-family:inherit;font-size:0.95rem;border:1px solid var(--line);border-radius:9px;padding:11px;width:100%;background:var(--paper);color:var(--ink);}
   .row{display:flex;gap:8px;margin-bottom:8px;}
-  .row .g{flex:0 0 110px;}
   .calc{font-size:0.82rem;color:var(--muted);min-height:18px;margin:2px 2px 8px;}
   .addbtn{width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:inherit;}
   .addbtn:active{opacity:.85;}
+  .photobtn{width:100%;background:#fff;color:var(--green);border:1px solid var(--green);border-radius:10px;padding:12px;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:10px;}
+  .photobtn:active{opacity:.85;}
   .meal-tag{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
   .meal-tag button{flex:1;min-width:70px;font-size:0.8rem;padding:8px 4px;border:1px solid var(--line);background:var(--paper);border-radius:8px;cursor:pointer;color:var(--muted);font-family:inherit;}
   .meal-tag button.sel{background:var(--green);color:#fff;border-color:var(--green);}
@@ -82,6 +83,22 @@
         <input id="tgtProt" type="number" inputmode="numeric" min="0">
       </label>
     </div>
+    <h2 style="margin-top:14px;">Розпізнавання фото (Anthropic API)</h2>
+    <div class="row">
+      <label>API-ключ
+        <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+      </label>
+    </div>
+    <div class="row">
+      <label>Модель
+        <select id="apiModel">
+          <option value="claude-opus-5">Claude Opus 5 — найточніше</option>
+          <option value="claude-sonnet-5">Claude Sonnet 5 — швидше й дешевше</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5 — найдешевше</option>
+        </select>
+      </label>
+    </div>
+    <div class="barlbl">Ключ зберігається лише в цьому браузері (localStorage) і надсилається напряму в Anthropic API з вашого пристрою — на жоден інший сервер не потрапляє.</div>
   </div>
 
   <div class="summary">
@@ -101,15 +118,26 @@
       <button data-m="Перекус">Перекус</button>
       <button data-m="Вечеря">Вечеря</button>
     </div>
+    <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
+    <button type="button" class="photobtn" id="photoBtn">📷 Розпізнати за фото</button>
+    <div class="calc" id="photoStatus"></div>
     <div class="row">
       <select id="food" onchange="updCalc()"></select>
     </div>
-    <div class="row">
-      <input class="g" id="grams" type="number" inputmode="numeric" placeholder="грами" oninput="updCalc()">
-      <input id="customName" placeholder="назва (для «інше»)" style="display:none;">
+    <div class="row" id="gramsRow">
+      <input id="grams" type="number" inputmode="numeric" placeholder="грами" oninput="updCalc()">
     </div>
-    <div class="row" id="customProtRow" style="display:none;">
-      <input id="customProt" type="number" inputmode="decimal" placeholder="білок, г (необов'язково)">
+    <div id="customBlock" style="display:none;">
+      <div class="row">
+        <input id="customName" placeholder="назва страви">
+      </div>
+      <div class="row">
+        <input id="customGrams" type="number" inputmode="numeric" placeholder="вага, г (необов'язково)">
+        <input id="customKcal" type="number" inputmode="numeric" placeholder="ккал">
+      </div>
+      <div class="row">
+        <input id="customProt" type="number" inputmode="decimal" placeholder="білок, г (необов'язково)">
+      </div>
     </div>
     <div class="calc" id="calcPreview"></div>
     <button class="addbtn" onclick="addEntry()">＋ Додати</button>
@@ -154,6 +182,9 @@ const FOODS = {
 
 const DEFAULT_TGT_KCAL = 2137, DEFAULT_TGT_PROT = 140;
 const TARGETS_KEY = "calTracker:targets";
+const API_KEY_KEY = "calTracker:apiKey";
+const API_MODEL_KEY = "calTracker:apiModel";
+const DEFAULT_MODEL = "claude-opus-5";
 let TGT_KCAL = DEFAULT_TGT_KCAL, TGT_PROT = DEFAULT_TGT_PROT;
 let curDate = new Date();
 let selMeal = "Сніданок";
@@ -187,11 +218,21 @@ function saveTargets(){
   try{ localStorage.setItem(TARGETS_KEY, JSON.stringify({kcal:k, prot:p})); }catch(e){}
   render();
 }
+function loadApiSettings(){
+  document.getElementById("apiKey").value = localStorage.getItem(API_KEY_KEY) || "";
+  document.getElementById("apiModel").value = localStorage.getItem(API_MODEL_KEY) || DEFAULT_MODEL;
+}
 document.getElementById("gearBtn").onclick = () => {
   document.getElementById("settingsBox").classList.toggle("show");
 };
 document.getElementById("tgtKcal").addEventListener("change", saveTargets);
 document.getElementById("tgtProt").addEventListener("change", saveTargets);
+document.getElementById("apiKey").addEventListener("change", () => {
+  try{ localStorage.setItem(API_KEY_KEY, document.getElementById("apiKey").value.trim()); }catch(e){}
+});
+document.getElementById("apiModel").addEventListener("change", () => {
+  try{ localStorage.setItem(API_MODEL_KEY, document.getElementById("apiModel").value); }catch(e){}
+});
 
 // populate food dropdown
 const foodSel = document.getElementById("food");
@@ -207,17 +248,19 @@ document.querySelectorAll("#mealTag button").forEach(b=>{
 function isUnit(f){ return FOODS[f] && FOODS[f][2]==="шт"; }
 function isCustom(f){ return f==="Інше (ввести вручну)"; }
 function updCalc(){
-  const f=foodSel.value, g=parseFloat(document.getElementById("grams").value)||0;
-  const cn=document.getElementById("customName");
-  const cp=document.getElementById("customProtRow");
-  const gi=document.getElementById("grams");
+  const f=foodSel.value;
+  const gramsRow=document.getElementById("gramsRow");
+  const customBlock=document.getElementById("customBlock");
   if(isCustom(f)){
-    cn.style.display="block"; cp.style.display="block";
-    gi.placeholder="ккал";
-    document.getElementById("calcPreview").textContent="Введи назву, калорії (в полі «грами») і, за бажанням, білок";
+    gramsRow.style.display="none";
+    customBlock.style.display="block";
+    document.getElementById("calcPreview").textContent="";
     return;
   }
-  cn.style.display="none"; cp.style.display="none";
+  gramsRow.style.display="flex";
+  customBlock.style.display="none";
+  const gi=document.getElementById("grams");
+  const g=parseFloat(gi.value)||0;
   gi.placeholder = isUnit(f)?"штук":"грами";
   if(!g){ document.getElementById("calcPreview").textContent=""; return; }
   const [k,p]=calcFood(f,g);
@@ -247,24 +290,136 @@ function save(){
   }
 }
 function addEntry(){
-  const f=foodSel.value, g=parseFloat(document.getElementById("grams").value)||0;
-  if(!g) return;
+  const f=foodSel.value;
   let name, detail, kcal, prot;
   if(isCustom(f)){
-    name=document.getElementById("customName").value.trim()||"Інше";
-    detail=""; kcal=Math.round(g);
-    prot=Math.round((parseFloat(document.getElementById("customProt").value)||0)*10)/10;
+    kcal = Math.round(parseFloat(document.getElementById("customKcal").value)||0);
+    if(!kcal) return;
+    name = document.getElementById("customName").value.trim() || "Інше";
+    const gramsVal = parseFloat(document.getElementById("customGrams").value);
+    detail = gramsVal>0 ? Math.round(gramsVal)+" г" : "";
+    prot = Math.round((parseFloat(document.getElementById("customProt").value)||0)*10)/10;
   }else{
+    const g=parseFloat(document.getElementById("grams").value)||0;
+    if(!g) return;
     const [k,p]=calcFood(f,g); kcal=Math.round(k); prot=Math.round(p*10)/10;
     name=f.replace(" (шт)",""); detail = isUnit(f) ? g+" шт" : g+" г";
   }
   dayData.entries.push({meal:selMeal,name,detail,kcal,prot});
   save();
-  document.getElementById("grams").value=""; document.getElementById("customName").value="";
+  document.getElementById("grams").value="";
+  document.getElementById("customName").value="";
+  document.getElementById("customGrams").value="";
+  document.getElementById("customKcal").value="";
   document.getElementById("customProt").value="";
   document.getElementById("calcPreview").textContent="";
+  document.getElementById("photoStatus").textContent="";
   render();
 }
+
+const PHOTO_PROMPT = `Подивись на фото їжі. Визнач, що це за страва (українською), оціни загальну вагу порції в грамах за візуальними орієнтирами (розмір тарілки/посуду, типові порції), і приблизну кількість калорій та білка (у грамах) у цій порції. Якщо на фото кілька страв чи продуктів — оціни сумарно все, що на фото.
+
+Дай відповідь СУВОРО у вигляді одного JSON-об'єкта, без markdown-розмітки, без пояснень і без жодного тексту до чи після нього:
+{"name": "назва страви українською", "grams": число (орієнтовна вага порції в грамах), "kcal": число (орієнтовна кількість калорій), "protein": число (орієнтовний білок у грамах)}`;
+
+function resizeImageToBase64(file){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Не вдалося прочитати файл"));
+    reader.onload = () => { img.src = reader.result; };
+    img.onerror = () => reject(new Error("Не вдалося завантажити зображення"));
+    img.onload = () => {
+      const maxSide = 1024;
+      let {width, height} = img;
+      if(width > maxSide || height > maxSide){
+        if(width >= height){ height = Math.round(height * maxSide / width); width = maxSide; }
+        else{ width = Math.round(width * maxSide / height); height = maxSide; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+      resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function analyzeFoodPhoto(base64, mediaType, apiKey){
+  const model = localStorage.getItem(API_MODEL_KEY) || DEFAULT_MODEL;
+  const body = {
+    model,
+    max_tokens: 600,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+        { type: "text", text: PHOTO_PROMPT }
+      ]
+    }]
+  };
+  if(model !== "claude-haiku-4-5"){
+    body.output_config = { effort: "low" };
+  }
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  if(!resp.ok){
+    throw new Error((data.error && data.error.message) || `HTTP ${resp.status}`);
+  }
+  const textBlock = (data.content || []).find(b => b.type === "text");
+  if(!textBlock) throw new Error("Модель не повернула текстову відповідь");
+  const match = textBlock.text.match(/\{[\s\S]*\}/);
+  if(!match) throw new Error("Не вдалося розпізнати відповідь моделі");
+  const parsed = JSON.parse(match[0]);
+  if(typeof parsed.kcal !== "number") throw new Error("Некоректна відповідь моделі");
+  return parsed;
+}
+
+function applyPhotoResult(r){
+  foodSel.value = "Інше (ввести вручну)";
+  updCalc();
+  document.getElementById("customName").value = r.name || "Страва з фото";
+  document.getElementById("customGrams").value = (typeof r.grams === "number") ? Math.round(r.grams) : "";
+  document.getElementById("customKcal").value = Math.round(r.kcal);
+  document.getElementById("customProt").value = (typeof r.protein === "number") ? Math.round(r.protein*10)/10 : "";
+}
+
+const photoInput = document.getElementById("photoInput");
+document.getElementById("photoBtn").onclick = () => photoInput.click();
+photoInput.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if(!file) return;
+  const apiKey = localStorage.getItem(API_KEY_KEY) || "";
+  const statusEl = document.getElementById("photoStatus");
+  if(!apiKey){
+    document.getElementById("settingsBox").classList.add("show");
+    alert("Спершу вкажіть Anthropic API-ключ у налаштуваннях (⚙), щоб розпізнавати фото.");
+    return;
+  }
+  try{
+    statusEl.textContent = "Стискаю фото…";
+    const {base64, mediaType} = await resizeImageToBase64(file);
+    statusEl.textContent = "Аналізую фото — визначаю страву, вагу, калорії й білок…";
+    const result = await analyzeFoodPhoto(base64, mediaType, apiKey);
+    applyPhotoResult(result);
+    statusEl.textContent = "Готово — перевірте дані нижче і натисніть «Додати».";
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = "";
+    alert("Не вдалося розпізнати фото: " + (err.message || err));
+  }
+});
 function delEntry(i){ dayData.entries.splice(i,1); save(); render(); }
 
 function render(){
@@ -314,6 +469,7 @@ function fmtDate(d){
   return `${days[d.getDay()]}, ${d.getDate()}.${pad2(d.getMonth()+1)}${t}`;
 }
 loadTargets();
+loadApiSettings();
 load();
 </script>
 </body>
