@@ -48,6 +48,11 @@
   .row{display:flex;gap:8px;margin-bottom:8px;}
   #customBlock label{flex:1;font-size:0.78rem;color:var(--muted);display:block;}
   #customBlock label input{margin-top:4px;}
+  #burnCard label{flex:1;font-size:0.78rem;color:var(--muted);display:block;}
+  #burnCard label input{margin-top:4px;}
+  .aggcard{background:var(--green-soft);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
+  .agglbl{font-size:0.72rem;color:var(--green);font-weight:650;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;}
+  .aggrow{display:flex;justify-content:space-between;font-size:0.85rem;padding:2px 0;}
   .calc{font-size:0.82rem;color:var(--muted);min-height:18px;margin:2px 2px 8px;}
   .addbtn{width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:inherit;}
   .addbtn:active{opacity:.85;}
@@ -93,6 +98,8 @@
   </div>
 
   <div class="settings" id="historyBox">
+    <h2>Зведення</h2>
+    <div id="aggSummary"></div>
     <h2>Історія по днях</h2>
     <div id="historyList"></div>
   </div>
@@ -107,6 +114,30 @@
         <input id="tgtProt" type="number" inputmode="numeric" min="0">
       </label>
     </div>
+    <h2 style="margin-top:14px;">Спалені калорії</h2>
+    <div class="row">
+      <label>Базовий обмін (BMR), ккал/день
+        <input id="bmrInput" type="number" inputmode="numeric" min="0" placeholder="напр. 1600">
+      </label>
+    </div>
+    <button type="button" class="photobtn" id="bmrCalcToggle" style="margin-bottom:0;">Порахувати BMR за формулою</button>
+    <div id="bmrCalc" style="display:none;margin-top:10px;">
+      <div class="row">
+        <label>Вага, кг<input id="bmrWeight" type="number" inputmode="numeric" min="0"></label>
+        <label>Зріст, см<input id="bmrHeight" type="number" inputmode="numeric" min="0"></label>
+      </div>
+      <div class="row">
+        <label>Вік, років<input id="bmrAge" type="number" inputmode="numeric" min="0"></label>
+        <label>Стать
+          <select id="bmrSex">
+            <option value="m">Чоловіча</option>
+            <option value="f">Жіноча</option>
+          </select>
+        </label>
+      </div>
+      <button type="button" class="photobtn" id="bmrCalcBtn" style="margin-bottom:0;">Порахувати й підставити</button>
+    </div>
+    <div class="barlbl">BMR — скільки калорій організм спалює в стані спокою за добу. Це число автоматично додається щодня до «активних» калорій (з фітнес-трекера чи вручну) для підрахунку загального спалення й балансу дня.</div>
     <h2 style="margin-top:14px;">Розпізнавання фото (Anthropic API)</h2>
     <div class="row">
       <label>API-ключ
@@ -139,6 +170,19 @@
     </div>
     <div class="bar"><div id="kcalBar" style="width:0%"></div></div>
     <div class="barlbl" id="remain"></div>
+  </div>
+
+  <div class="summary" id="burnCard" style="margin-top:10px;">
+    <div class="totrow">
+      <div class="kcal"><span id="burnedNum">0</span> <small>спалено, ккал</small></div>
+      <div class="prot" id="balanceBox">баланс<br><span id="balanceNum">0</span> ккал</div>
+    </div>
+    <div class="row" style="margin-top:10px;margin-bottom:0;">
+      <label>Активні калорії (з трекера), ккал
+        <input id="activeKcal" type="number" inputmode="numeric" min="0" placeholder="0">
+      </label>
+    </div>
+    <div class="barlbl" id="burnBreakdown"></div>
   </div>
 
   <div class="adder">
@@ -224,10 +268,12 @@ const TARGETS_KEY = "calTracker:targets";
 const API_KEY_KEY = "calTracker:apiKey";
 const API_MODEL_KEY = "calTracker:apiModel";
 const DEFAULT_MODEL = "claude-opus-5";
+const BMR_KEY = "calTracker:bmr";
 let TGT_KCAL = DEFAULT_TGT_KCAL, TGT_PROT = DEFAULT_TGT_PROT;
+let BMR = 0;
 let curDate = new Date();
 let selMeal = "Сніданок";
-let dayData = {entries:[]};
+let dayData = {entries:[], activeKcal:0};
 let customDensity = { kcalPerG: null, protPerG: null };
 function resetCustomDensity(){ customDensity = { kcalPerG: null, protPerG: null }; }
 
@@ -263,6 +309,31 @@ function loadApiSettings(){
   document.getElementById("apiKey").value = localStorage.getItem(API_KEY_KEY) || "";
   document.getElementById("apiModel").value = localStorage.getItem(API_MODEL_KEY) || DEFAULT_MODEL;
 }
+
+function loadBMR(){
+  try{ BMR = parseFloat(localStorage.getItem(BMR_KEY)) || 0; }catch(e){ BMR = 0; }
+  document.getElementById("bmrInput").value = BMR || "";
+}
+function saveBMR(){
+  BMR = parseFloat(document.getElementById("bmrInput").value) || 0;
+  try{ localStorage.setItem(BMR_KEY, String(BMR)); }catch(e){}
+  render();
+}
+document.getElementById("bmrInput").addEventListener("change", saveBMR);
+document.getElementById("bmrCalcToggle").onclick = () => {
+  const el = document.getElementById("bmrCalc");
+  el.style.display = el.style.display==="block" ? "none" : "block";
+};
+document.getElementById("bmrCalcBtn").onclick = () => {
+  const w = parseFloat(document.getElementById("bmrWeight").value);
+  const h = parseFloat(document.getElementById("bmrHeight").value);
+  const a = parseFloat(document.getElementById("bmrAge").value);
+  const sex = document.getElementById("bmrSex").value;
+  if(!(w>0 && h>0 && a>0)){ alert("Заповніть вагу, зріст і вік коректними числами."); return; }
+  const base = 10*w + 6.25*h - 5*a;
+  document.getElementById("bmrInput").value = Math.round(sex==="m" ? base+5 : base-161);
+  saveBMR();
+};
 document.getElementById("gearBtn").onclick = () => {
   document.getElementById("historyBox").classList.remove("show");
   document.getElementById("settingsBox").classList.toggle("show");
@@ -278,7 +349,57 @@ function dayKeyToDate(key){
   const [y,m,d] = key.split("-").map(Number);
   return new Date(y, m-1, d);
 }
+
+function computeRangeTotals(fromDate, toDate){
+  let eaten=0, active=0, days=0;
+  for(let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    if(!key || !key.startsWith("diary:")) continue;
+    const d = dayKeyToDate(key.slice(6));
+    if(d < fromDate || d > toDate) continue;
+    let data;
+    try{ data = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
+    const entries = (data && data.entries) || [];
+    const dayActive = (data && data.activeKcal) || 0;
+    if(entries.length===0 && !dayActive) continue;
+    entries.forEach(e => { eaten += e.kcal; });
+    active += dayActive;
+    days++;
+  }
+  const burned = active + BMR*days;
+  return { eaten: Math.round(eaten), burned: Math.round(burned), balance: Math.round(eaten-burned), days };
+}
+function renderAggregates(){
+  const box = document.getElementById("aggSummary");
+  const now = new Date();
+  const y=now.getFullYear(), m=now.getMonth(), da=now.getDate();
+  const dow = (now.getDay()+6)%7; // Mon=0..Sun=6
+  const weekStart = new Date(y,m,da-dow);
+  const weekEnd = new Date(y,m,da-dow+6);
+  const monthStart = new Date(y,m,1);
+  const monthEnd = new Date(y,m+1,0);
+  const week = computeRangeTotals(weekStart, weekEnd);
+  const month = computeRangeTotals(monthStart, monthEnd);
+  box.innerHTML = "";
+  [["Цей тиждень", week], ["Цей місяць", month]].forEach(([label, t]) => {
+    const card = document.createElement("div");
+    card.className = "aggcard";
+    if(t.days===0){
+      card.innerHTML = `<div class="agglbl">${label}</div><div class="aggrow"><span>Ще немає даних</span></div>`;
+      box.appendChild(card); return;
+    }
+    const balLabel = t.balance<=0 ? "дефіцит" : "профіцит";
+    const balColor = t.balance<=0 ? "var(--green)" : "var(--red)";
+    card.innerHTML = `<div class="agglbl">${label} · ${t.days} дн.</div>
+      <div class="aggrow"><span>З'їдено</span><b>${t.eaten} ккал</b></div>
+      <div class="aggrow"><span>Спалено</span><b>${t.burned} ккал</b></div>
+      <div class="aggrow"><span>${balLabel}</span><b style="color:${balColor}">${Math.abs(t.balance)} ккал</b></div>`;
+    box.appendChild(card);
+  });
+}
+
 function renderHistory(){
+  renderAggregates();
   const list = document.getElementById("historyList");
   list.innerHTML = "";
   const days = [];
@@ -288,7 +409,8 @@ function renderHistory(){
     let data;
     try{ data = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
     const entries = (data && data.entries) || [];
-    if(entries.length===0) continue;
+    const dayActive = (data && data.activeKcal) || 0;
+    if(entries.length===0 && !dayActive) continue;
     let tk=0, tp=0;
     entries.forEach(e => { tk+=e.kcal; tp+=e.prot; });
     days.push({ dayStr: key.slice(6), kcal: Math.round(tk), prot: Math.round(tp) });
@@ -336,6 +458,7 @@ function exportData(){
     version: 1,
     exportedAt: new Date().toISOString(),
     targets: { kcal: TGT_KCAL, prot: TGT_PROT },
+    bmr: BMR,
     days
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"});
@@ -365,8 +488,12 @@ function importData(file){
       if(backup.targets && backup.targets.kcal>0 && backup.targets.prot>0){
         localStorage.setItem(TARGETS_KEY, JSON.stringify(backup.targets));
       }
+      if(typeof backup.bmr === "number" && backup.bmr>0){
+        localStorage.setItem(BMR_KEY, String(backup.bmr));
+      }
     }catch(e){ alert("Не вдалося зберегти дані на цьому пристрої."); return; }
     loadTargets();
+    loadBMR();
     load();
     alert("Дані імпортовано.");
   };
@@ -464,9 +591,16 @@ function load(){
     const raw = localStorage.getItem(storeKey(curDate));
     if(raw) data = JSON.parse(raw);
   }catch(e){}
-  dayData = data || {entries:[]};
+  dayData = data || {entries:[], activeKcal:0};
+  if(!dayData.entries) dayData.entries = [];
+  document.getElementById("activeKcal").value = dayData.activeKcal || "";
   render();
 }
+document.getElementById("activeKcal").addEventListener("input", () => {
+  dayData.activeKcal = parseFloat(document.getElementById("activeKcal").value) || 0;
+  save();
+  render();
+});
 function save(){
   try{
     localStorage.setItem(storeKey(curDate), JSON.stringify(dayData));
@@ -672,6 +806,17 @@ function render(){
   document.getElementById("kcalBar").style.background = tk>TGT_KCAL ? "var(--red)" : "var(--green)";
   const left=TGT_KCAL-Math.round(tk);
   document.getElementById("remain").textContent = left>=0 ? `залишилось ${left} ккал` : `перевищено на ${-left} ккал`;
+
+  const active = dayData.activeKcal || 0;
+  const burned = active + BMR;
+  const balance = Math.round(tk) - burned;
+  document.getElementById("burnedNum").textContent = Math.round(burned);
+  document.getElementById("balanceNum").textContent = Math.abs(Math.round(balance));
+  document.getElementById("balanceBox").firstChild.textContent = (balance<=0 ? "дефіцит" : "профіцит") + " ";
+  document.getElementById("balanceNum").style.color = balance<=0 ? "var(--green)" : "var(--red)";
+  document.getElementById("burnBreakdown").textContent = BMR>0
+    ? `активні ${Math.round(active)} + базові (BMR) ${Math.round(BMR)} ккал`
+    : `активні ${Math.round(active)} ккал · базовий обмін не задано — вкажіть у ⚙, щоб рахувати автоматично`;
 }
 
 function shiftDay(n){ curDate.setDate(curDate.getDate()+n); load(); }
@@ -682,6 +827,7 @@ function fmtDate(d){
 }
 loadTargets();
 loadApiSettings();
+loadBMR();
 load();
 if(navigator.storage && navigator.storage.persist){
   navigator.storage.persist().catch(()=>{});
