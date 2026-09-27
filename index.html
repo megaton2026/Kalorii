@@ -38,7 +38,11 @@
   .totrow{display:flex;justify-content:space-between;align-items:flex-end;}
   .kcal{font-size:2rem;font-weight:750;letter-spacing:-0.02em;color:var(--green);}
   .kcal small{font-size:0.9rem;font-weight:500;color:var(--muted);}
-  .prot{font-size:0.95rem;font-weight:600;color:#3a4a41;text-align:right;}
+  .macrorow{display:flex;gap:8px;margin-top:12px;}
+  .macro{flex:1;background:#fff;border-radius:8px;padding:8px 6px;text-align:center;}
+  .mlbl{font-size:0.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;}
+  .mval{font-size:0.92rem;font-weight:650;margin-top:2px;color:#3a4a41;}
+  .balancebox{font-size:0.95rem;font-weight:600;color:#3a4a41;text-align:right;}
   .bar{height:8px;background:#d5e2d9;border-radius:5px;margin-top:12px;overflow:hidden;}
   .bar > div{height:100%;background:var(--green);border-radius:5px;transition:width .3s;}
   .barlbl{font-size:0.76rem;color:var(--muted);margin-top:5px;}
@@ -114,6 +118,14 @@
         <input id="tgtProt" type="number" inputmode="numeric" min="0">
       </label>
     </div>
+    <div class="row">
+      <label>Вуглеводи, г
+        <input id="tgtCarbs" type="number" inputmode="numeric" min="0">
+      </label>
+      <label>Жири, г
+        <input id="tgtFat" type="number" inputmode="numeric" min="0">
+      </label>
+    </div>
     <h2 style="margin-top:14px;">Спалені калорії</h2>
     <div class="row">
       <label>Базовий обмін (BMR), ккал/день
@@ -166,16 +178,20 @@
   <div class="summary">
     <div class="totrow">
       <div class="kcal"><span id="kcalNum">0</span> <small>/ <span id="kcalTgt">2137</span> ккал</small></div>
-      <div class="prot">білок<br><span id="protNum">0</span> / <span id="protTgt">140</span> г</div>
     </div>
     <div class="bar"><div id="kcalBar" style="width:0%"></div></div>
     <div class="barlbl" id="remain"></div>
+    <div class="macrorow">
+      <div class="macro"><div class="mlbl">Білок</div><div class="mval"><span id="protNum">0</span>/<span id="protTgt">140</span> г</div></div>
+      <div class="macro"><div class="mlbl">Вуглеводи</div><div class="mval"><span id="carbsNum">0</span>/<span id="carbsTgt">220</span> г</div></div>
+      <div class="macro"><div class="mlbl">Жири</div><div class="mval"><span id="fatNum">0</span>/<span id="fatTgt">70</span> г</div></div>
+    </div>
   </div>
 
   <div class="summary" id="burnCard" style="margin-top:10px;">
     <div class="totrow">
       <div class="kcal"><span id="burnedNum">0</span> <small>спалено, ккал</small></div>
-      <div class="prot" id="balanceBox">баланс<br><span id="balanceNum">0</span> ккал</div>
+      <div class="balancebox" id="balanceBox">баланс<br><span id="balanceNum">0</span> ккал</div>
     </div>
     <div class="row" style="margin-top:10px;margin-bottom:0;">
       <label>Активні калорії (з трекера), ккал
@@ -220,6 +236,14 @@
         <label>Білок, г (необов'язково)
           <input id="customProt" type="number" inputmode="decimal" placeholder="—">
         </label>
+        <label>Вуглеводи, г (необов'язково)
+          <input id="customCarbs" type="number" inputmode="decimal" placeholder="—">
+        </label>
+      </div>
+      <div class="row">
+        <label>Жири, г (необов'язково)
+          <input id="customFat" type="number" inputmode="decimal" placeholder="—">
+        </label>
       </div>
     </div>
     <div class="calc" id="calcPreview"></div>
@@ -235,47 +259,47 @@
 </div>
 
 <script>
-// per 100 g unless unit=шт: [kcal, protein, unit?]
+// per 100 g unless unit=шт: [kcal, protein, carbs, fat, unit?]
 const FOODS = {
-  "Яйця смажені (шт)":      [95, 6.3, "шт"],
-  "Яйця варені (шт)":       [78, 6.3, "шт"],
-  "Гречка варена":          [95, 3.6],
-  "Вівсянка суха":          [380, 13],
-  "Рис варений":            [130, 2.7],
-  "Кіноа варена":           [120, 4.4],
-  "Сочевиця варена":        [116, 9],
-  "Червона квасоля (консерв.)": [101, 8.1],
-  "Картопля варена":        [87, 2],
-  "Лосось":                 [208, 20],
-  "Скумбрія":               [205, 19],
-  "Тріска / хек":           [82, 18],
-  "Сир кисломолочний 5%":   [121, 17],
-  "Кефір":                  [53, 3.4],
-  "Банан":                  [89, 1.1],
-  "Ягоди":                  [52, 0.7],
-  "Малина":                 [52, 1.2],
-  "Горіхи волоські":        [654, 15],
-  "Олія оливкова":          [884, 0],
-  "Хліб цільнозерновий":    [247, 9],
-  "Зефір":                  [325, 0.8],
-  "Чорний шоколад":         [598, 7.8],
-  "Протеїн-ізолят":         [373, 90],
-  "Інше (ввести вручну)":   [null, null],
+  "Яйця смажені (шт)":      [95, 6.3, 0.6, 7, "шт"],
+  "Яйця варені (шт)":       [78, 6.3, 0.6, 5.3, "шт"],
+  "Гречка варена":          [95, 3.6, 21, 1],
+  "Вівсянка суха":          [380, 13, 60, 7],
+  "Рис варений":            [130, 2.7, 28, 0.3],
+  "Кіноа варена":           [120, 4.4, 21, 1.9],
+  "Сочевиця варена":        [116, 9, 20, 0.4],
+  "Червона квасоля (консерв.)": [101, 8.1, 17, 0.5],
+  "Картопля варена":        [87, 2, 20, 0.1],
+  "Лосось":                 [208, 20, 0, 13],
+  "Скумбрія":               [205, 19, 0, 14],
+  "Тріска / хек":           [82, 18, 0, 0.7],
+  "Сир кисломолочний 5%":   [121, 17, 3, 5],
+  "Кефір":                  [53, 3.4, 4.7, 2],
+  "Банан":                  [89, 1.1, 23, 0.3],
+  "Ягоди":                  [52, 0.7, 14, 0.3],
+  "Малина":                 [52, 1.2, 12, 0.7],
+  "Горіхи волоські":        [654, 15, 14, 65],
+  "Олія оливкова":          [884, 0, 0, 100],
+  "Хліб цільнозерновий":    [247, 9, 41, 4],
+  "Зефір":                  [325, 0.8, 79, 0.2],
+  "Чорний шоколад":         [598, 7.8, 46, 43],
+  "Протеїн-ізолят":         [373, 90, 4, 2],
+  "Інше (ввести вручну)":   [null, null, null, null],
 };
 
-const DEFAULT_TGT_KCAL = 2137, DEFAULT_TGT_PROT = 140;
+const DEFAULT_TGT_KCAL = 2137, DEFAULT_TGT_PROT = 140, DEFAULT_TGT_CARBS = 220, DEFAULT_TGT_FAT = 70;
 const TARGETS_KEY = "calTracker:targets";
 const API_KEY_KEY = "calTracker:apiKey";
 const API_MODEL_KEY = "calTracker:apiModel";
 const DEFAULT_MODEL = "claude-opus-5";
 const BMR_KEY = "calTracker:bmr";
-let TGT_KCAL = DEFAULT_TGT_KCAL, TGT_PROT = DEFAULT_TGT_PROT;
+let TGT_KCAL = DEFAULT_TGT_KCAL, TGT_PROT = DEFAULT_TGT_PROT, TGT_CARBS = DEFAULT_TGT_CARBS, TGT_FAT = DEFAULT_TGT_FAT;
 let BMR = 0;
 let curDate = new Date();
 let selMeal = "Сніданок";
 let dayData = {entries:[], activeKcal:0};
-let customDensity = { kcalPerG: null, protPerG: null };
-function resetCustomDensity(){ customDensity = { kcalPerG: null, protPerG: null }; }
+let customDensity = { kcalPerG: null, protPerG: null, carbsPerG: null, fatPerG: null };
+function resetCustomDensity(){ customDensity = { kcalPerG: null, protPerG: null, carbsPerG: null, fatPerG: null }; }
 
 function pad2(n){ return String(n).padStart(2,"0"); }
 function dkey(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
@@ -289,20 +313,30 @@ function loadTargets(){
       const t = JSON.parse(raw);
       if(t.kcal>0) TGT_KCAL = t.kcal;
       if(t.prot>0) TGT_PROT = t.prot;
+      if(t.carbs>0) TGT_CARBS = t.carbs;
+      if(t.fat>0) TGT_FAT = t.fat;
     }
   }catch(e){}
   document.getElementById("tgtKcal").value = TGT_KCAL;
   document.getElementById("tgtProt").value = TGT_PROT;
+  document.getElementById("tgtCarbs").value = TGT_CARBS;
+  document.getElementById("tgtFat").value = TGT_FAT;
   document.getElementById("kcalTgt").textContent = TGT_KCAL;
   document.getElementById("protTgt").textContent = TGT_PROT;
+  document.getElementById("carbsTgt").textContent = TGT_CARBS;
+  document.getElementById("fatTgt").textContent = TGT_FAT;
 }
 function saveTargets(){
   const k = parseFloat(document.getElementById("tgtKcal").value) || DEFAULT_TGT_KCAL;
   const p = parseFloat(document.getElementById("tgtProt").value) || DEFAULT_TGT_PROT;
-  TGT_KCAL = k; TGT_PROT = p;
+  const c = parseFloat(document.getElementById("tgtCarbs").value) || DEFAULT_TGT_CARBS;
+  const f = parseFloat(document.getElementById("tgtFat").value) || DEFAULT_TGT_FAT;
+  TGT_KCAL = k; TGT_PROT = p; TGT_CARBS = c; TGT_FAT = f;
   document.getElementById("kcalTgt").textContent = TGT_KCAL;
   document.getElementById("protTgt").textContent = TGT_PROT;
-  try{ localStorage.setItem(TARGETS_KEY, JSON.stringify({kcal:k, prot:p})); }catch(e){}
+  document.getElementById("carbsTgt").textContent = TGT_CARBS;
+  document.getElementById("fatTgt").textContent = TGT_FAT;
+  try{ localStorage.setItem(TARGETS_KEY, JSON.stringify({kcal:k, prot:p, carbs:c, fat:f})); }catch(e){}
   render();
 }
 function loadApiSettings(){
@@ -439,6 +473,8 @@ function renderHistory(){
 }
 document.getElementById("tgtKcal").addEventListener("change", saveTargets);
 document.getElementById("tgtProt").addEventListener("change", saveTargets);
+document.getElementById("tgtCarbs").addEventListener("change", saveTargets);
+document.getElementById("tgtFat").addEventListener("change", saveTargets);
 document.getElementById("apiKey").addEventListener("change", () => {
   try{ localStorage.setItem(API_KEY_KEY, document.getElementById("apiKey").value.trim()); }catch(e){}
 });
@@ -457,7 +493,7 @@ function exportData(){
   const backup = {
     version: 1,
     exportedAt: new Date().toISOString(),
-    targets: { kcal: TGT_KCAL, prot: TGT_PROT },
+    targets: { kcal: TGT_KCAL, prot: TGT_PROT, carbs: TGT_CARBS, fat: TGT_FAT },
     bmr: BMR,
     days
   };
@@ -519,9 +555,10 @@ function loadCustomFoods(){
   }catch(e){ customFoods = {}; }
   Object.keys(customFoods).forEach(name => { FOODS[name] = customFoods[name]; });
 }
-function saveCustomFood(name, kcalPer100, protPer100){
+function saveCustomFood(name, kcalPer100, protPer100, carbsPer100, fatPer100){
   if(!name || (FOODS[name] && !customFoods[name])) return; // don't overwrite a built-in food
-  customFoods[name] = [Math.round(kcalPer100*10)/10, Math.round(protPer100*10)/10];
+  const r10 = v => Math.round((v||0)*10)/10;
+  customFoods[name] = [r10(kcalPer100), r10(protPer100), r10(carbsPer100), r10(fatPer100)];
   FOODS[name] = customFoods[name];
   try{ localStorage.setItem(CUSTOM_FOODS_KEY, JSON.stringify(customFoods)); }catch(e){}
   rebuildFoodSelect();
@@ -556,7 +593,7 @@ document.querySelectorAll("#mealTag button").forEach(b=>{
     b.classList.add("sel"); selMeal=b.dataset.m; };
 });
 
-function isUnit(f){ return FOODS[f] && FOODS[f][2]==="шт"; }
+function isUnit(f){ return FOODS[f] && FOODS[f][4]==="шт"; }
 function isCustom(f){ return f===CUSTOM_LABEL; }
 function updCalc(){
   const f=foodSel.value;
@@ -575,13 +612,14 @@ function updCalc(){
   const g=parseFloat(gi.value)||0;
   gi.placeholder = isUnit(f)?"штук":"грами";
   if(!g){ document.getElementById("calcPreview").textContent=""; return; }
-  const [k,p]=calcFood(f,g);
-  document.getElementById("calcPreview").textContent = `≈ ${Math.round(k)} ккал · ${p.toFixed(1)} г білка`;
+  const c=calcFood(f,g);
+  document.getElementById("calcPreview").textContent = `≈ ${Math.round(c.kcal)} ккал · Б${c.prot.toFixed(1)} В${c.carbs.toFixed(1)} Ж${c.fat.toFixed(1)} г`;
 }
 function calcFood(f,g){
-  const d=FOODS[f]; if(!d||d[0]==null) return [g,0];
-  if(d[2]==="шт") return [d[0]*g, d[1]*g];
-  return [d[0]*g/100, d[1]*g/100];
+  const d=FOODS[f];
+  if(!d||d[0]==null) return {kcal:g, prot:0, carbs:0, fat:0};
+  const mul = d[4]==="шт" ? g : g/100;
+  return { kcal:d[0]*mul, prot:d[1]*mul, carbs:d[2]*mul, fat:d[3]*mul };
 }
 
 function load(){
@@ -610,7 +648,7 @@ function save(){
 }
 function addEntry(){
   const f=foodSel.value;
-  let name, detail, kcal, prot;
+  let name, detail, kcal, prot, carbs, fat;
   if(isCustom(f)){
     kcal = Math.round(parseFloat(document.getElementById("customKcal").value)||0);
     if(!kcal) return;
@@ -619,32 +657,37 @@ function addEntry(){
     const gramsVal = parseFloat(document.getElementById("customGrams").value);
     detail = gramsVal>0 ? Math.round(gramsVal)+" г" : "";
     prot = Math.round((parseFloat(document.getElementById("customProt").value)||0)*10)/10;
+    carbs = Math.round((parseFloat(document.getElementById("customCarbs").value)||0)*10)/10;
+    fat = Math.round((parseFloat(document.getElementById("customFat").value)||0)*10)/10;
     if(typedName && gramsVal>0){
-      saveCustomFood(typedName, kcal/gramsVal*100, prot/gramsVal*100);
+      saveCustomFood(typedName, kcal/gramsVal*100, prot/gramsVal*100, carbs/gramsVal*100, fat/gramsVal*100);
     }
   }else{
     const g=parseFloat(document.getElementById("grams").value)||0;
     if(!g) return;
-    const [k,p]=calcFood(f,g); kcal=Math.round(k); prot=Math.round(p*10)/10;
+    const c=calcFood(f,g); kcal=Math.round(c.kcal); prot=Math.round(c.prot*10)/10;
+    carbs=Math.round(c.carbs*10)/10; fat=Math.round(c.fat*10)/10;
     name=f.replace(" (шт)",""); detail = isUnit(f) ? g+" шт" : g+" г";
   }
-  dayData.entries.push({meal:selMeal,name,detail,kcal,prot});
+  dayData.entries.push({meal:selMeal,name,detail,kcal,prot,carbs,fat});
   save();
   document.getElementById("grams").value="";
   document.getElementById("customName").value="";
   document.getElementById("customGrams").value="";
   document.getElementById("customKcal").value="";
   document.getElementById("customProt").value="";
+  document.getElementById("customCarbs").value="";
+  document.getElementById("customFat").value="";
   document.getElementById("calcPreview").textContent="";
   document.getElementById("photoStatus").textContent="";
   resetCustomDensity();
   render();
 }
 
-const PHOTO_PROMPT = `Подивись на фото їжі. Визнач, що це за страва (українською), оціни загальну вагу порції в грамах за візуальними орієнтирами (розмір тарілки/посуду, типові порції), і приблизну кількість калорій та білка (у грамах) у цій порції. Якщо на фото кілька страв чи продуктів — оціни сумарно все, що на фото.
+const PHOTO_PROMPT = `Подивись на фото їжі. Визнач, що це за страва (українською), оціни загальну вагу порції в грамах за візуальними орієнтирами (розмір тарілки/посуду, типові порції), і приблизну кількість калорій, білка, вуглеводів та жирів (усе у грамах, крім калорій) у цій порції. Якщо на фото кілька страв чи продуктів — оціни сумарно все, що на фото.
 
 Дай відповідь СУВОРО у вигляді одного JSON-об'єкта, без markdown-розмітки, без пояснень і без жодного тексту до чи після нього:
-{"name": "назва страви українською", "grams": число (орієнтовна вага порції в грамах), "kcal": число (орієнтовна кількість калорій), "protein": число (орієнтовний білок у грамах)}`;
+{"name": "назва страви українською", "grams": число (орієнтовна вага порції в грамах), "kcal": число (орієнтовна кількість калорій), "protein": число (орієнтовний білок у грамах), "carbs": число (орієнтовні вуглеводи у грамах), "fat": число (орієнтовні жири у грамах)}`;
 
 function resizeImageToBase64(file){
   return new Promise((resolve, reject) => {
@@ -716,20 +759,28 @@ function applyPhotoResult(r){
   document.getElementById("customGrams").value = (typeof r.grams === "number") ? Math.round(r.grams) : "";
   document.getElementById("customKcal").value = Math.round(r.kcal);
   document.getElementById("customProt").value = (typeof r.protein === "number") ? Math.round(r.protein*10)/10 : "";
+  document.getElementById("customCarbs").value = (typeof r.carbs === "number") ? Math.round(r.carbs*10)/10 : "";
+  document.getElementById("customFat").value = (typeof r.fat === "number") ? Math.round(r.fat*10)/10 : "";
   if(typeof r.grams === "number" && r.grams>0){
     customDensity.kcalPerG = r.kcal / r.grams;
     customDensity.protPerG = (typeof r.protein === "number" ? r.protein : 0) / r.grams;
+    customDensity.carbsPerG = (typeof r.carbs === "number" ? r.carbs : 0) / r.grams;
+    customDensity.fatPerG = (typeof r.fat === "number" ? r.fat : 0) / r.grams;
   }
 }
 
 const customGramsEl = document.getElementById("customGrams");
 const customKcalEl = document.getElementById("customKcal");
 const customProtEl = document.getElementById("customProt");
+const customCarbsEl = document.getElementById("customCarbs");
+const customFatEl = document.getElementById("customFat");
 customGramsEl.addEventListener("input", () => {
   const g = parseFloat(customGramsEl.value);
-  if(customDensity.kcalPerG==null || !(g>0)) return;
-  customKcalEl.value = Math.round(g * customDensity.kcalPerG);
-  customProtEl.value = Math.round(g * customDensity.protPerG * 10) / 10;
+  if(!(g>0)) return;
+  if(customDensity.kcalPerG!=null) customKcalEl.value = Math.round(g * customDensity.kcalPerG);
+  if(customDensity.protPerG!=null) customProtEl.value = Math.round(g * customDensity.protPerG * 10) / 10;
+  if(customDensity.carbsPerG!=null) customCarbsEl.value = Math.round(g * customDensity.carbsPerG * 10) / 10;
+  if(customDensity.fatPerG!=null) customFatEl.value = Math.round(g * customDensity.fatPerG * 10) / 10;
 });
 customKcalEl.addEventListener("input", () => {
   const g = parseFloat(customGramsEl.value), k = parseFloat(customKcalEl.value);
@@ -738,6 +789,14 @@ customKcalEl.addEventListener("input", () => {
 customProtEl.addEventListener("input", () => {
   const g = parseFloat(customGramsEl.value), pr = parseFloat(customProtEl.value);
   if(g>0 && !isNaN(pr)) customDensity.protPerG = pr / g;
+});
+customCarbsEl.addEventListener("input", () => {
+  const g = parseFloat(customGramsEl.value), c = parseFloat(customCarbsEl.value);
+  if(g>0 && !isNaN(c)) customDensity.carbsPerG = c / g;
+});
+customFatEl.addEventListener("input", () => {
+  const g = parseFloat(customGramsEl.value), fv = parseFloat(customFatEl.value);
+  if(g>0 && !isNaN(fv)) customDensity.fatPerG = fv / g;
 });
 
 const photoInput = document.getElementById("photoInput");
@@ -768,12 +827,18 @@ photoInput.addEventListener("change", async (e) => {
 });
 function delEntry(i){ dayData.entries.splice(i,1); save(); render(); }
 
+function setMacro(id, value, target){
+  const numEl = document.getElementById(id+"Num");
+  numEl.textContent = Math.round(value);
+  numEl.parentElement.style.color = value>target ? "var(--red)" : "#3a4a41";
+}
+
 function render(){
   const el=document.getElementById("entries"); el.innerHTML="";
-  let tk=0, tp=0;
+  let tk=0, tp=0, tc=0, tf=0;
   const order=["Сніданок","Обід","Перекус","Вечеря"];
   const byMeal={};
-  dayData.entries.forEach((e,i)=>{ (byMeal[e.meal]=byMeal[e.meal]||[]).push({...e,i}); tk+=e.kcal; tp+=e.prot; });
+  dayData.entries.forEach((e,i)=>{ (byMeal[e.meal]=byMeal[e.meal]||[]).push({...e,i}); tk+=e.kcal; tp+=e.prot; tc+=e.carbs||0; tf+=e.fat||0; });
   if(dayData.entries.length===0){
     const empty=document.createElement("div"); empty.className="empty"; empty.textContent="Ще нічого не додано";
     el.appendChild(empty);
@@ -787,7 +852,7 @@ function render(){
       const info=document.createElement("div"); info.className="info";
       const nm=document.createElement("div"); nm.className="nm"; nm.textContent=e.name;
       const sub=document.createElement("div"); sub.className="sub";
-      sub.textContent = `${e.detail}${e.detail?' · ':''}${e.prot} г білка`;
+      sub.textContent = `${e.detail}${e.detail?' · ':''}Б${e.prot}·В${e.carbs||0}·Ж${e.fat||0} г`;
       info.appendChild(nm); info.appendChild(sub);
 
       const mc=document.createElement("div"); mc.className="mc"; mc.textContent=`${e.kcal} ккал`;
@@ -800,12 +865,15 @@ function render(){
     });
   });
   document.getElementById("kcalNum").textContent=Math.round(tk);
-  document.getElementById("protNum").textContent=Math.round(tp);
   const pct=Math.min(100, tk/TGT_KCAL*100);
   document.getElementById("kcalBar").style.width=pct+"%";
   document.getElementById("kcalBar").style.background = tk>TGT_KCAL ? "var(--red)" : "var(--green)";
   const left=TGT_KCAL-Math.round(tk);
   document.getElementById("remain").textContent = left>=0 ? `залишилось ${left} ккал` : `перевищено на ${-left} ккал`;
+
+  setMacro("prot", tp, TGT_PROT);
+  setMacro("carbs", tc, TGT_CARBS);
+  setMacro("fat", tf, TGT_FAT);
 
   const active = dayData.activeKcal || 0;
   const burned = active + BMR;
