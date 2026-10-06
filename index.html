@@ -83,7 +83,7 @@
   .histrow .hn{display:flex;gap:10px;font-size:0.85rem;color:var(--muted);white-space:nowrap;}
   .histrow .hn b{color:var(--ink);font-weight:600;}
   #historyList{max-height:50vh;overflow-y:auto;}
-  #weekList, #monthList{max-height:28vh;overflow-y:auto;margin-bottom:4px;}
+  #weekList, #monthList, #weightWeekList, #weightMonthList{max-height:28vh;overflow-y:auto;margin-bottom:4px;}
   .sumrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);}
   .sumrow:last-child{border-bottom:none;}
   .sumrow .hd{font-size:0.85rem;font-weight:500;}
@@ -129,6 +129,11 @@
     <button type="button" class="addbtn" id="weightSaveBtn" style="margin-bottom:0;">Зберегти</button>
     <div id="weightSummary"></div>
     <div id="weightChart"></div>
+    <h2 style="margin-top:16px;">По тижнях</h2>
+    <div id="weightWeekList"></div>
+    <h2 style="margin-top:14px;">По місяцях</h2>
+    <div id="weightMonthList"></div>
+    <h2 style="margin-top:14px;">По днях</h2>
     <div id="weightList"></div>
   </div>
 
@@ -456,7 +461,42 @@ function renderWeightPanel(){
   const all = getAllWeights();
   renderWeightSummary(all);
   renderWeightChart(all);
+  renderWeightPeriodList("weightWeekList", all, weekMondayKey, weekRangeLabel);
+  renderWeightPeriodList("weightMonthList", all, monthKeyOf, monthLabel);
   renderWeightList(all);
+}
+function buildWeightPeriods(all, keyFn){
+  const buckets = {};
+  all.forEach(w => {
+    const k = keyFn(w.dayStr);
+    (buckets[k] = buckets[k] || []).push(w.kg);
+  });
+  const keysAsc = Object.keys(buckets).sort((a,b) => a.localeCompare(b));
+  return keysAsc.map((k,i) => {
+    const avgKg = buckets[k].reduce((a,b)=>a+b,0)/buckets[k].length;
+    const prevArr = i>0 ? buckets[keysAsc[i-1]] : null;
+    const prevAvg = prevArr ? prevArr.reduce((a,b)=>a+b,0)/prevArr.length : null;
+    return {
+      key: k, count: buckets[k].length, avg: avgKg,
+      delta: prevAvg!=null ? Math.round((avgKg-prevAvg)*10)/10 : null
+    };
+  }).reverse();
+}
+function renderWeightPeriodList(boxId, all, keyFn, labelFn){
+  const box = document.getElementById(boxId);
+  box.innerHTML = "";
+  const rows = buildWeightPeriods(all, keyFn);
+  if(rows.length===0){ box.innerHTML = '<div class="empty">Ще немає даних</div>'; return; }
+  rows.forEach(r => {
+    const row = document.createElement("div"); row.className="sumrow";
+    const hd = document.createElement("div"); hd.className="hd"; hd.textContent = `${labelFn(r.key)} · ${r.count} зап.`;
+    const hn = document.createElement("div"); hn.className="hn";
+    const deltaColor = r.delta==null ? "var(--muted)" : (r.delta<=0 ? "var(--green)" : "var(--red)");
+    const deltaText = r.delta==null ? "—" : `${r.delta>0?'+':''}${r.delta} кг`;
+    hn.innerHTML = `<span><b>${r.avg.toFixed(1)}</b> кг</span><span style="color:${deltaColor};font-weight:600">${deltaText}</span>`;
+    row.appendChild(hd); row.appendChild(hn);
+    box.appendChild(row);
+  });
 }
 function renderWeightSummary(all){
   const box = document.getElementById("weightSummary");
@@ -597,6 +637,15 @@ function computeBuckets(){
   return {weeks, months};
 }
 const UA_MONTHS = ["Січень","Лютий","Березень","Квітень","Травень","Червень","Липень","Серпень","Вересень","Жовтень","Листопад","Грудень"];
+function weekRangeLabel(mondayKey){
+  const monday = dayKeyToDate(mondayKey);
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6);
+  return `${pad2(monday.getDate())}.${pad2(monday.getMonth()+1)}–${pad2(sunday.getDate())}.${pad2(sunday.getMonth()+1)}`;
+}
+function monthLabel(mk){
+  const [y,m] = mk.split("-").map(Number);
+  return `${UA_MONTHS[m-1]} ${y}`;
+}
 function renderSumList(boxId, buckets, labelFn){
   const box = document.getElementById(boxId);
   box.innerHTML = "";
@@ -616,19 +665,8 @@ function renderSumList(boxId, buckets, labelFn){
     box.appendChild(row);
   });
 }
-function renderWeekList(buckets){
-  renderSumList("weekList", buckets.weeks, wk => {
-    const monday = dayKeyToDate(wk);
-    const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6);
-    return `${pad2(monday.getDate())}.${pad2(monday.getMonth()+1)}–${pad2(sunday.getDate())}.${pad2(sunday.getMonth()+1)}`;
-  });
-}
-function renderMonthList(buckets){
-  renderSumList("monthList", buckets.months, mk => {
-    const [y,m] = mk.split("-").map(Number);
-    return `${UA_MONTHS[m-1]} ${y}`;
-  });
-}
+function renderWeekList(buckets){ renderSumList("weekList", buckets.weeks, weekRangeLabel); }
+function renderMonthList(buckets){ renderSumList("monthList", buckets.months, monthLabel); }
 
 function renderHistory(){
   renderAggregates();
