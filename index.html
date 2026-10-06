@@ -83,6 +83,22 @@
   .histrow .hn{display:flex;gap:10px;font-size:0.85rem;color:var(--muted);white-space:nowrap;}
   .histrow .hn b{color:var(--ink);font-weight:600;}
   #historyList{max-height:50vh;overflow-y:auto;}
+  #weekList, #monthList{max-height:28vh;overflow-y:auto;margin-bottom:4px;}
+  .sumrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);}
+  .sumrow:last-child{border-bottom:none;}
+  .sumrow .hd{font-size:0.85rem;font-weight:500;}
+  .sumrow .hn{display:flex;gap:9px;font-size:0.8rem;color:var(--muted);white-space:nowrap;}
+  .sumrow .hn b{font-weight:600;}
+  .weightrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);}
+  .weightrow:last-child{border-bottom:none;}
+  .weightrow .wd{font-size:0.88rem;}
+  .weightrow .wv{display:flex;align-items:center;gap:8px;font-size:0.9rem;font-weight:600;}
+  .weightrow .wdel{background:none;border:none;color:#c7b0ac;font-size:1.1rem;cursor:pointer;padding:0 2px;}
+  #weightList{max-height:34vh;overflow-y:auto;margin-top:6px;}
+  #weightSummary{font-size:0.82rem;color:var(--muted);margin-top:10px;}
+  #weightChart{margin-top:10px;}
+  .nutricard{background:var(--green-soft);border-radius:10px;padding:14px;margin-top:12px;font-size:0.88rem;line-height:1.55;white-space:pre-wrap;}
+  .nutrimeta{font-size:0.72rem;color:var(--muted);margin-top:8px;}
 </style>
 </head>
 <body>
@@ -90,6 +106,8 @@
   <header>
     <h1>Щоденник калорій</h1>
     <div class="headerbtns">
+      <button class="gear" id="weightBtn" type="button" title="Вага тіла">⚖</button>
+      <button class="gear" id="nutriBtn" type="button" title="Аналіз нутриціолога">🥗</button>
       <button class="gear" id="historyBtn" type="button" title="Історія по днях">📜</button>
       <button class="gear" id="gearBtn" type="button" title="Налаштування цілей">⚙</button>
     </div>
@@ -101,10 +119,35 @@
     <button onclick="shiftDay(1)">›</button>
   </div>
 
+  <div class="settings" id="weightBox">
+    <h2>Вага тіла</h2>
+    <div class="row">
+      <label>Вага сьогодні, кг
+        <input id="weightInput" type="number" step="0.1" min="0" placeholder="напр. 82.5">
+      </label>
+    </div>
+    <button type="button" class="addbtn" id="weightSaveBtn" style="margin-bottom:0;">Зберегти</button>
+    <div id="weightSummary"></div>
+    <div id="weightChart"></div>
+    <div id="weightList"></div>
+  </div>
+
+  <div class="settings" id="nutriBox">
+    <h2>Аналіз нутриціолога (AI)</h2>
+    <div class="barlbl">Claude аналізує, що ви їли за останні 7 днів: баланс білків/жирів/вуглеводів, орієнтовне забезпечення вітамінами й мінералами (на основі типового складу продуктів) та дає поради на наступний тиждень. Це орієнтовний AI-аналіз, не медична консультація.</div>
+    <button type="button" class="addbtn" id="nutriAnalyzeBtn" style="margin-top:10px;">🥗 Проаналізувати тиждень</button>
+    <div class="calc" id="nutriStatus"></div>
+    <div id="nutriResult"></div>
+  </div>
+
   <div class="settings" id="historyBox">
     <h2>Зведення</h2>
     <div id="aggSummary"></div>
-    <h2>Історія по днях</h2>
+    <h2>По тижнях</h2>
+    <div id="weekList"></div>
+    <h2 style="margin-top:14px;">По місяцях</h2>
+    <div id="monthList"></div>
+    <h2 style="margin-top:14px;">Історія по днях</h2>
     <div id="historyList"></div>
   </div>
 
@@ -368,16 +411,111 @@ document.getElementById("bmrCalcBtn").onclick = () => {
   document.getElementById("bmrInput").value = Math.round(sex==="m" ? base+5 : base-161);
   saveBMR();
 };
-document.getElementById("gearBtn").onclick = () => {
-  document.getElementById("historyBox").classList.remove("show");
-  document.getElementById("settingsBox").classList.toggle("show");
+const PANEL_IDS = ["historyBox","settingsBox","weightBox","nutriBox"];
+function openPanel(id, onOpen){
+  PANEL_IDS.forEach(pid => document.getElementById(pid).classList.remove("show"));
+  document.getElementById(id).classList.add("show");
+  if(onOpen) onOpen();
+}
+function togglePanel(id, onOpen){
+  const wasOpen = document.getElementById(id).classList.contains("show");
+  if(wasOpen){ document.getElementById(id).classList.remove("show"); }
+  else{ openPanel(id, onOpen); }
+}
+document.getElementById("gearBtn").onclick = () => togglePanel("settingsBox");
+document.getElementById("historyBtn").onclick = () => togglePanel("historyBox", renderHistory);
+document.getElementById("weightBtn").onclick = () => togglePanel("weightBox", renderWeightPanel);
+document.getElementById("nutriBtn").onclick = () => togglePanel("nutriBox", renderNutriPanel);
+
+const WEIGHT_PREFIX = "weight:";
+function getAllWeights(){
+  const arr = [];
+  for(let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    if(!key || !key.startsWith(WEIGHT_PREFIX)) continue;
+    const kg = parseFloat(localStorage.getItem(key));
+    if(!(kg>0)) continue;
+    arr.push({ dayStr: key.slice(WEIGHT_PREFIX.length), kg });
+  }
+  arr.sort((a,b) => a.dayStr.localeCompare(b.dayStr));
+  return arr;
+}
+function deleteWeightEntry(dayStr){
+  try{ localStorage.removeItem(WEIGHT_PREFIX+dayStr); }catch(e){}
+  renderWeightPanel();
+}
+document.getElementById("weightSaveBtn").onclick = () => {
+  const v = parseFloat(document.getElementById("weightInput").value);
+  if(!(v>0)){ alert("Введіть коректну вагу в кілограмах."); return; }
+  try{ localStorage.setItem(WEIGHT_PREFIX+todayKey(), String(Math.round(v*10)/10)); }
+  catch(e){ alert("Не вдалося зберегти на цьому пристрої."); return; }
+  renderWeightPanel();
 };
-document.getElementById("historyBtn").onclick = () => {
-  document.getElementById("settingsBox").classList.remove("show");
-  const box = document.getElementById("historyBox");
-  box.classList.toggle("show");
-  if(box.classList.contains("show")) renderHistory();
-};
+function renderWeightPanel(){
+  document.getElementById("weightInput").value = localStorage.getItem(WEIGHT_PREFIX+todayKey()) || "";
+  const all = getAllWeights();
+  renderWeightSummary(all);
+  renderWeightChart(all);
+  renderWeightList(all);
+}
+function renderWeightSummary(all){
+  const box = document.getElementById("weightSummary");
+  if(all.length===0){ box.textContent = "Ще немає жодного запису."; return; }
+  const last = all[all.length-1];
+  let text = `Записів: ${all.length} · останнє: ${last.kg} кг`;
+  if(all.length>1){
+    const diffAll = Math.round((last.kg-all[0].kg)*10)/10;
+    text += ` · від першого запису: ${diffAll>0?'+':''}${diffAll} кг`;
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-30);
+    const inWindow = all.filter(w => dayKeyToDate(w.dayStr) >= cutoff);
+    if(inWindow.length>1){
+      const diff30 = Math.round((last.kg-inWindow[0].kg)*10)/10;
+      text += ` · за 30 днів: ${diff30>0?'+':''}${diff30} кг`;
+    }
+  }
+  box.textContent = text;
+}
+function renderWeightChart(all){
+  const box = document.getElementById("weightChart");
+  if(all.length<2){ box.innerHTML = ""; return; }
+  const pts = all.slice(-60);
+  const kgs = pts.map(p => p.kg);
+  const minK = Math.min(...kgs), maxK = Math.max(...kgs);
+  const span = Math.max(maxK-minK, 0.5);
+  const W=300, H=90, pad=6;
+  const stepX = pts.length>1 ? (W-2*pad)/(pts.length-1) : 0;
+  const xy = pts.map((p,i) => [pad+i*stepX, pad+(H-2*pad)*(1-(p.kg-minK)/span)]);
+  const path = xy.map((p,i) => (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const dots = xy.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.2" fill="#2f6b4f"/>`).join('');
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:120px;display:block;" preserveAspectRatio="none">
+      <path d="${path}" fill="none" stroke="#2f6b4f" stroke-width="2"/>${dots}
+    </svg>
+    <div class="barlbl">${minK.toFixed(1)}–${maxK.toFixed(1)} кг · останні ${pts.length} записів</div>`;
+}
+function renderWeightList(all){
+  const box = document.getElementById("weightList");
+  box.innerHTML = "";
+  if(all.length===0) return;
+  const rows = all.map((w,i) => ({...w, delta: i>0 ? Math.round((w.kg-all[i-1].kg)*10)/10 : null})).reverse();
+  rows.forEach(w => {
+    const row = document.createElement("div"); row.className="weightrow";
+    const wd = document.createElement("div"); wd.className="wd"; wd.textContent = fmtDate(dayKeyToDate(w.dayStr));
+    const wv = document.createElement("div"); wv.className="wv";
+    const kgSpan = document.createElement("span"); kgSpan.textContent = w.kg.toFixed(1)+" кг";
+    wv.appendChild(kgSpan);
+    if(w.delta){
+      const d = document.createElement("span");
+      d.textContent = (w.delta>0?'+':'')+w.delta;
+      d.style.cssText = `color:${w.delta>0?'var(--red)':'var(--green)'};font-size:0.78rem;`;
+      wv.appendChild(d);
+    }
+    const del = document.createElement("button"); del.className="wdel"; del.textContent="×";
+    del.onclick = () => deleteWeightEntry(w.dayStr);
+    wv.appendChild(del);
+    row.appendChild(wd); row.appendChild(wv);
+    box.appendChild(row);
+  });
+}
 
 function dayKeyToDate(key){
   const [y,m,d] = key.split("-").map(Number);
@@ -432,8 +570,71 @@ function renderAggregates(){
   });
 }
 
+function weekMondayKey(dayStr){
+  const d = dayKeyToDate(dayStr);
+  const dow = (d.getDay()+6)%7;
+  return dkey(new Date(d.getFullYear(), d.getMonth(), d.getDate()-dow));
+}
+function monthKeyOf(dayStr){ return dayStr.slice(0,7); }
+function computeBuckets(){
+  const weeks = {}, months = {};
+  for(let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    if(!key || !key.startsWith("diary:")) continue;
+    const dayStr = key.slice(6);
+    let data;
+    try{ data = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
+    const entries = (data && data.entries) || [];
+    const dayActive = (data && data.activeKcal) || 0;
+    if(entries.length===0 && !dayActive) continue;
+    let eaten=0; entries.forEach(e => { eaten += e.kcal; });
+    const wk = weekMondayKey(dayStr), mk = monthKeyOf(dayStr);
+    if(!weeks[wk]) weeks[wk] = {eaten:0, active:0, days:0};
+    weeks[wk].eaten += eaten; weeks[wk].active += dayActive; weeks[wk].days++;
+    if(!months[mk]) months[mk] = {eaten:0, active:0, days:0};
+    months[mk].eaten += eaten; months[mk].active += dayActive; months[mk].days++;
+  }
+  return {weeks, months};
+}
+const UA_MONTHS = ["Січень","Лютий","Березень","Квітень","Травень","Червень","Липень","Серпень","Вересень","Жовтень","Листопад","Грудень"];
+function renderSumList(boxId, buckets, labelFn){
+  const box = document.getElementById(boxId);
+  box.innerHTML = "";
+  const keys = Object.keys(buckets).sort((a,b) => b.localeCompare(a));
+  if(keys.length===0){ box.innerHTML = '<div class="empty">Ще немає даних</div>'; return; }
+  keys.forEach(k => {
+    const t = buckets[k];
+    const eaten = Math.round(t.eaten);
+    const burned = Math.round(t.active + BMR*t.days);
+    const balance = eaten - burned;
+    const balColor = balance<=0 ? "var(--green)" : "var(--red)";
+    const row = document.createElement("div"); row.className="sumrow";
+    const hd = document.createElement("div"); hd.className="hd"; hd.textContent = `${labelFn(k)} · ${t.days} дн.`;
+    const hn = document.createElement("div"); hn.className="hn";
+    hn.innerHTML = `<span><b>${eaten}</b> ккал</span><span style="color:${balColor};font-weight:600">${balance<=0?'−':'+'}${Math.abs(balance)}</span>`;
+    row.appendChild(hd); row.appendChild(hn);
+    box.appendChild(row);
+  });
+}
+function renderWeekList(buckets){
+  renderSumList("weekList", buckets.weeks, wk => {
+    const monday = dayKeyToDate(wk);
+    const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6);
+    return `${pad2(monday.getDate())}.${pad2(monday.getMonth()+1)}–${pad2(sunday.getDate())}.${pad2(sunday.getMonth()+1)}`;
+  });
+}
+function renderMonthList(buckets){
+  renderSumList("monthList", buckets.months, mk => {
+    const [y,m] = mk.split("-").map(Number);
+    return `${UA_MONTHS[m-1]} ${y}`;
+  });
+}
+
 function renderHistory(){
   renderAggregates();
+  const buckets = computeBuckets();
+  renderWeekList(buckets);
+  renderMonthList(buckets);
   const list = document.getElementById("historyList");
   list.innerHTML = "";
   const days = [];
@@ -447,7 +648,8 @@ function renderHistory(){
     if(entries.length===0 && !dayActive) continue;
     let tk=0, tp=0;
     entries.forEach(e => { tk+=e.kcal; tp+=e.prot; });
-    days.push({ dayStr: key.slice(6), kcal: Math.round(tk), prot: Math.round(tp) });
+    const burned = Math.round(dayActive + BMR);
+    days.push({ dayStr: key.slice(6), kcal: Math.round(tk), prot: Math.round(tp), balance: Math.round(tk)-burned });
   }
   if(days.length===0){
     list.innerHTML = '<div class="empty">Ще немає жодного збереженого дня</div>';
@@ -461,7 +663,8 @@ function renderHistory(){
     btn.type = "button";
     const hd = document.createElement("div"); hd.className="hd"; hd.textContent = fmtDate(date);
     const hn = document.createElement("div"); hn.className="hn";
-    hn.innerHTML = `<span><b>${d.kcal}</b> ккал</span><span><b>${d.prot}</b> г білка</span>`;
+    const balColor = d.balance<=0 ? "var(--green)" : "var(--red)";
+    hn.innerHTML = `<span><b>${d.kcal}</b> ккал</span><span><b>${d.prot}</b> г білка</span><span style="color:${balColor};font-weight:600">${d.balance<=0?'−':'+'}${Math.abs(d.balance)}</span>`;
     btn.appendChild(hd); btn.appendChild(hn);
     btn.onclick = () => {
       curDate = date;
@@ -484,10 +687,14 @@ document.getElementById("apiModel").addEventListener("change", () => {
 
 function exportData(){
   const days = {};
+  const weights = {};
   for(let i=0; i<localStorage.length; i++){
     const key = localStorage.key(i);
     if(key && key.startsWith("diary:")){
       try{ days[key.slice(6)] = JSON.parse(localStorage.getItem(key)); }catch(e){}
+    }else if(key && key.startsWith(WEIGHT_PREFIX)){
+      const kg = parseFloat(localStorage.getItem(key));
+      if(kg>0) weights[key.slice(WEIGHT_PREFIX.length)] = kg;
     }
   }
   const backup = {
@@ -495,7 +702,8 @@ function exportData(){
     exportedAt: new Date().toISOString(),
     targets: { kcal: TGT_KCAL, prot: TGT_PROT, carbs: TGT_CARBS, fat: TGT_FAT },
     bmr: BMR,
-    days
+    days,
+    weights
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"});
   const url = URL.createObjectURL(blob);
@@ -516,11 +724,18 @@ function importData(file){
     try{ backup = JSON.parse(reader.result); }catch(e){ alert("Файл пошкоджений або це не резервна копія."); return; }
     if(!backup || typeof backup.days !== "object"){ alert("Файл пошкоджений або це не резервна копія."); return; }
     const dayCount = Object.keys(backup.days).length;
-    if(!confirm(`Імпортувати ${dayCount} дн. записів? Наявні записи за ці дні буде замінено.`)) return;
+    const weightCount = backup.weights ? Object.keys(backup.weights).length : 0;
+    if(!confirm(`Імпортувати ${dayCount} дн. записів та ${weightCount} записів ваги? Наявні записи за ці дні буде замінено.`)) return;
     try{
       Object.keys(backup.days).forEach(day => {
         localStorage.setItem("diary:" + day, JSON.stringify(backup.days[day]));
       });
+      if(backup.weights && typeof backup.weights === "object"){
+        Object.keys(backup.weights).forEach(day => {
+          const kg = parseFloat(backup.weights[day]);
+          if(kg>0) localStorage.setItem(WEIGHT_PREFIX + day, String(kg));
+        });
+      }
       if(backup.targets && backup.targets.kcal>0 && backup.targets.prot>0){
         localStorage.setItem(TARGETS_KEY, JSON.stringify(backup.targets));
       }
@@ -808,7 +1023,7 @@ photoInput.addEventListener("change", async (e) => {
   const apiKey = localStorage.getItem(API_KEY_KEY) || "";
   const statusEl = document.getElementById("photoStatus");
   if(!apiKey){
-    document.getElementById("settingsBox").classList.add("show");
+    openPanel("settingsBox");
     alert("Спершу вкажіть Anthropic API-ключ у налаштуваннях (⚙), щоб розпізнавати фото.");
     return;
   }
@@ -893,6 +1108,132 @@ function fmtDate(d){
   const t=dkey(d)===todayKey()?" · сьогодні":"";
   return `${days[d.getDay()]}, ${d.getDate()}.${pad2(d.getMonth()+1)}${t}`;
 }
+function gatherWeekData(){
+  const now = new Date();
+  const y=now.getFullYear(), m=now.getMonth(), da=now.getDate();
+  const todayMidnight = new Date(y,m,da);
+  const start = new Date(y,m,da-6);
+  const byDish = {};
+  let days=0, kcalSum=0, protSum=0, carbsSum=0, fatSum=0, activeSum=0;
+  for(let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    if(!key || !key.startsWith("diary:")) continue;
+    const d = dayKeyToDate(key.slice(6));
+    if(d < start || d > todayMidnight) continue;
+    let data;
+    try{ data = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
+    const entries = (data && data.entries) || [];
+    const dayActive = (data && data.activeKcal) || 0;
+    if(entries.length===0 && !dayActive) continue;
+    days++;
+    activeSum += dayActive;
+    entries.forEach(e => {
+      kcalSum += e.kcal; protSum += e.prot; carbsSum += e.carbs||0; fatSum += e.fat||0;
+      if(!byDish[e.name]) byDish[e.name] = {kcal:0, prot:0, carbs:0, fat:0, count:0};
+      const f = byDish[e.name];
+      f.kcal += e.kcal; f.prot += e.prot; f.carbs += e.carbs||0; f.fat += e.fat||0; f.count++;
+    });
+  }
+  return { days, kcalSum, protSum, carbsSum, fatSum, activeSum, byDish };
+}
+
+function buildNutriPrompt(wd){
+  const burned = wd.activeSum + BMR*wd.days;
+  const balance = Math.round(wd.kcalSum - burned);
+  const dishLines = Object.keys(wd.byDish)
+    .sort((a,b) => wd.byDish[b].kcal - wd.byDish[a].kcal)
+    .map(name => {
+      const f = wd.byDish[name];
+      return `- ${name} (${f.count}×): ${Math.round(f.kcal)} ккал, білок ${f.prot.toFixed(1)} г, вуглеводи ${f.carbs.toFixed(1)} г, жири ${f.fat.toFixed(1)} г`;
+    }).join("\n");
+  return `Ось харчовий щоденник користувача за останні ${wd.days} дн. (продукти/страви з сумарними показниками за весь період):
+${dishLines}
+
+Підсумок за період: ${Math.round(wd.kcalSum)} ккал з'їдено, білок ${wd.protSum.toFixed(0)} г, вуглеводи ${wd.carbsSum.toFixed(0)} г, жири ${wd.fatSum.toFixed(0)} г. Спалено приблизно ${Math.round(burned)} ккал (${balance<=0?'дефіцит':'профіцит'} ${Math.abs(balance)} ккал).
+
+Як дієтолог-нутриціолог, проаналізуй цей раціон:
+1. Баланс білків/жирів/вуглеводів (БЖВ) — чи є перекоси відносно типових рекомендацій.
+2. Орієнтовне забезпечення основними вітамінами й мінералами (залізо, кальцій, вітамін D, вітамін C, магній, омега-3, клітковина тощо) — на основі типового складу перелічених продуктів. Це приблизна оцінка, не лабораторний аналіз.
+3. 3-5 конкретних порад на наступний тиждень: що додати, зменшити або урізноманітнити в раціоні.
+
+Відповідай українською, стисло й структуровано (короткі заголовки чи позначки -), без зайвих вступних фраз. Наприкінці обов'язково додай одне речення, що це орієнтовний AI-аналіз і не замінює консультацію лікаря чи дієтолога.`;
+}
+
+async function analyzeNutrition(apiKey, promptText){
+  const model = localStorage.getItem(API_MODEL_KEY) || DEFAULT_MODEL;
+  const body = {
+    model,
+    max_tokens: 2000,
+    messages: [{ role: "user", content: promptText }]
+  };
+  if(model !== "claude-haiku-4-5"){
+    body.output_config = { effort: "medium" };
+  }
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  if(!resp.ok){
+    throw new Error((data.error && data.error.message) || `HTTP ${resp.status}`);
+  }
+  const textBlock = (data.content || []).find(b => b.type === "text");
+  if(!textBlock) throw new Error("Модель не повернула текстову відповідь");
+  return textBlock.text;
+}
+
+const NUTRI_KEY = "calTracker:nutriAnalysis";
+function loadNutriCache(){
+  try{
+    const raw = localStorage.getItem(NUTRI_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return null;
+}
+function renderNutriPanel(){
+  const cached = loadNutriCache();
+  const box = document.getElementById("nutriResult");
+  box.innerHTML = "";
+  if(cached){
+    const card = document.createElement("div"); card.className="nutricard"; card.textContent = cached.text;
+    const meta = document.createElement("div"); meta.className="nutrimeta"; meta.textContent = `Аналіз від ${cached.date}`;
+    box.appendChild(card); box.appendChild(meta);
+  }else{
+    box.innerHTML = '<div class="empty">Ще не аналізували. Натисніть кнопку вище.</div>';
+  }
+  document.getElementById("nutriStatus").textContent = "";
+}
+document.getElementById("nutriAnalyzeBtn").onclick = async () => {
+  const apiKey = localStorage.getItem(API_KEY_KEY) || "";
+  const statusEl = document.getElementById("nutriStatus");
+  if(!apiKey){
+    openPanel("settingsBox");
+    alert("Спершу вкажіть Anthropic API-ключ у налаштуваннях (⚙), щоб робити аналіз.");
+    return;
+  }
+  const wd = gatherWeekData();
+  if(wd.days===0){
+    statusEl.textContent = "Немає записів за останні 7 днів — спершу додайте їжу.";
+    return;
+  }
+  statusEl.textContent = "Аналізую раціон за тиждень…";
+  try{
+    const text = await analyzeNutrition(apiKey, buildNutriPrompt(wd));
+    try{ localStorage.setItem(NUTRI_KEY, JSON.stringify({ text, date: fmtDate(new Date()) })); }catch(e){}
+    renderNutriPanel();
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = "";
+    alert("Не вдалося отримати аналіз: " + (err.message || err));
+  }
+};
+
 loadTargets();
 loadApiSettings();
 loadBMR();
