@@ -50,6 +50,11 @@
   .adder h2{font-size:0.8rem;color:var(--muted);font-weight:650;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.03em;}
   select,input{font-family:inherit;font-size:0.95rem;border:1px solid var(--line);border-radius:9px;padding:11px;width:100%;background:var(--paper);color:var(--ink);}
   .row{display:flex;gap:8px;margin-bottom:8px;}
+  .suggest{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid var(--line);border-radius:9px;max-height:220px;overflow-y:auto;z-index:20;box-shadow:0 4px 14px rgba(0,0,0,.1);}
+  .suggest-item{padding:10px 12px;font-size:0.9rem;cursor:pointer;border-bottom:1px solid var(--line);}
+  .suggest-item:last-child{border-bottom:none;}
+  .suggest-item:hover, .suggest-item.active{background:var(--green-soft);}
+  .suggest-empty{padding:10px 12px;font-size:0.85rem;color:var(--muted);}
   #customBlock label{flex:1;font-size:0.78rem;color:var(--muted);display:block;}
   #customBlock label input{margin-top:4px;}
   #burnCard label{flex:1;font-size:0.78rem;color:var(--muted);display:block;}
@@ -260,8 +265,10 @@
     <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
     <button type="button" class="photobtn" id="photoBtn">📷 Розпізнати за фото</button>
     <div class="calc" id="photoStatus"></div>
-    <div class="row">
-      <select id="food" onchange="updCalc()"></select>
+    <div class="row" style="position:relative;">
+      <input id="foodSearch" type="text" placeholder="Пошук страви… (напр. гречка)" autocomplete="off">
+      <select id="food" style="display:none;"></select>
+      <div id="foodSuggest" class="suggest" style="display:none;"></div>
     </div>
     <div class="row" id="gramsRow">
       <input id="grams" type="number" inputmode="numeric" placeholder="грами" oninput="updCalc()">
@@ -837,7 +844,64 @@ function rebuildFoodSelect(){
   const other = document.createElement("option"); other.value=CUSTOM_LABEL; other.textContent=CUSTOM_LABEL;
   foodSel.appendChild(other);
   if([...foodSel.options].some(o => o.value===prevValue)) foodSel.value = prevValue;
+  const searchEl = document.getElementById("foodSearch");
+  if(searchEl) searchEl.value = currentFoodLabel();
 }
+function currentFoodLabel(){
+  const opt = foodSel.options[foodSel.selectedIndex];
+  return opt ? opt.textContent : "";
+}
+function selectFood(value){
+  foodSel.value = value;
+  document.getElementById("foodSearch").value = currentFoodLabel();
+  hideFoodSuggest();
+  updCalc();
+}
+function hideFoodSuggest(){
+  const box = document.getElementById("foodSuggest");
+  box.style.display = "none";
+  box.innerHTML = "";
+}
+function showFoodSuggest(filterText){
+  const box = document.getElementById("foodSuggest");
+  const q = filterText.trim().toLowerCase();
+  const all = Array.from(foodSel.options).map(o => ({ value:o.value, label:o.textContent }));
+  let matches = q ? all.filter(o => o.label.toLowerCase().includes(q)) : all;
+  if(q){
+    matches.sort((a,b) => {
+      const aStart = a.label.toLowerCase().startsWith(q) ? 0 : 1;
+      const bStart = b.label.toLowerCase().startsWith(q) ? 0 : 1;
+      return aStart - bStart;
+    });
+  }
+  box.innerHTML = "";
+  if(matches.length===0){
+    const empty = document.createElement("div"); empty.className="suggest-empty"; empty.textContent="Нічого не знайдено";
+    box.appendChild(empty);
+  }else{
+    matches.slice(0,50).forEach(m => {
+      const item = document.createElement("div"); item.className="suggest-item"; item.textContent=m.label;
+      item.dataset.value = m.value;
+      item.addEventListener("mousedown", (e) => { e.preventDefault(); selectFood(m.value); });
+      box.appendChild(item);
+    });
+  }
+  box.style.display = "block";
+}
+const foodSearchInput = document.getElementById("foodSearch");
+foodSearchInput.addEventListener("input", () => showFoodSuggest(foodSearchInput.value));
+foodSearchInput.addEventListener("focus", () => { foodSearchInput.select(); showFoodSuggest(""); });
+foodSearchInput.addEventListener("blur", () => setTimeout(hideFoodSuggest, 150));
+foodSearchInput.addEventListener("keydown", (e) => {
+  if(e.key === "Enter"){
+    e.preventDefault();
+    const first = document.querySelector("#foodSuggest .suggest-item");
+    if(first) selectFood(first.dataset.value);
+  }else if(e.key === "Escape"){
+    hideFoodSuggest();
+    foodSearchInput.blur();
+  }
+});
 loadCustomFoods();
 rebuildFoodSelect();
 
@@ -1006,8 +1070,7 @@ async function analyzeFoodPhoto(base64, mediaType, apiKey){
 }
 
 function applyPhotoResult(r){
-  foodSel.value = CUSTOM_LABEL;
-  updCalc();
+  selectFood(CUSTOM_LABEL);
   document.getElementById("customName").value = r.name || "Страва з фото";
   document.getElementById("customGrams").value = (typeof r.grams === "number") ? Math.round(r.grams) : "";
   document.getElementById("customKcal").value = Math.round(r.kcal);
