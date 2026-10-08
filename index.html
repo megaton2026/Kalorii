@@ -882,7 +882,7 @@ function showFoodSuggest(filterText){
     matches.slice(0,50).forEach(m => {
       const item = document.createElement("div"); item.className="suggest-item"; item.textContent=m.label;
       item.dataset.value = m.value;
-      item.addEventListener("mousedown", (e) => { e.preventDefault(); selectFood(m.value); });
+      item.addEventListener("pointerdown", (e) => { e.preventDefault(); selectFood(m.value); });
       box.appendChild(item);
     });
   }
