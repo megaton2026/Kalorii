@@ -14,7 +14,8 @@
 <style>
   :root{
     --paper:#fbfaf7; --ink:#1c2420; --muted:#7b857f; --line:#e6e3db;
-    --green:#2f6b4f; --green-soft:#eaf2ec; --red:#b0483a;
+    --green:#2f6b4f; --green-soft:#eaf2ec; --red:#b0483a; --red-soft:#f5e3e0;
+    --amber:#b8842e; --amber-soft:#f6ecd9;
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -104,6 +105,15 @@
   #weightChart{margin-top:10px;}
   .nutricard{background:var(--green-soft);border-radius:10px;padding:14px;margin-top:12px;font-size:0.88rem;line-height:1.55;white-space:pre-wrap;}
   .nutrimeta{font-size:0.72rem;color:var(--muted);margin-top:8px;}
+  .micrometer{margin-bottom:11px;}
+  .micro-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:0.82rem;margin-bottom:4px;}
+  .micro-label{color:var(--ink);font-weight:500;}
+  .micro-val{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .micro-track{height:8px;border-radius:5px;overflow:hidden;}
+  .micro-fill{height:100%;border-radius:5px;transition:width .3s;}
+  .scorebadge{display:inline-flex;align-items:center;justify-content:center;min-width:2.6em;padding:2px 8px;border-radius:999px;font-size:0.82rem;font-weight:700;font-variant-numeric:tabular-nums;}
+  #microRdaBox .row{margin-bottom:6px;}
+  #microRdaBox label{flex:1;font-size:0.76rem;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -112,7 +122,7 @@
     <h1>Щоденник калорій</h1>
     <div class="headerbtns">
       <button class="gear" id="weightBtn" type="button" title="Вага тіла">⚖</button>
-      <button class="gear" id="nutriBtn" type="button" title="Аналіз нутриціолога">🥗</button>
+      <button class="gear" id="nutriBtn" type="button" title="Нутриціологія">🥗</button>
       <button class="gear" id="historyBtn" type="button" title="Історія по днях">📜</button>
       <button class="gear" id="gearBtn" type="button" title="Налаштування цілей">⚙</button>
     </div>
@@ -143,8 +153,20 @@
   </div>
 
   <div class="settings" id="nutriBox">
-    <h2>Аналіз нутриціолога (AI)</h2>
-    <div class="barlbl">Claude аналізує, що ви їли за останні 7 днів: баланс білків/жирів/вуглеводів, орієнтовне забезпечення вітамінами й мінералами (на основі типового складу продуктів) та дає поради на наступний тиждень. Це орієнтовний AI-аналіз, не медична консультація.</div>
+    <h2>Нутриціологія</h2>
+    <div class="barlbl" id="microDayLabel"></div>
+    <button type="button" class="addbtn" id="microCalcBtn" style="margin-top:8px;">🧪 Порахувати факт за цей день</button>
+    <div class="calc" id="microStatus"></div>
+    <div id="microMeters" style="margin-top:12px;"></div>
+
+    <h2 style="margin-top:16px;">Статистика по днях</h2>
+    <div id="microDayList"></div>
+
+    <h2 style="margin-top:14px;">Статистика по тижням</h2>
+    <div id="microWeekList"></div>
+
+    <h2 style="margin-top:16px;">AI-поради на тиждень</h2>
+    <div class="barlbl">Claude аналізує, що ви їли за останні 7 днів: баланс білків/жирів/вуглеводів та дає конкретні поради на наступний тиждень. Це орієнтовний AI-аналіз, не медична консультація.</div>
     <button type="button" class="addbtn" id="nutriAnalyzeBtn" style="margin-top:10px;">🥗 Проаналізувати тиждень</button>
     <div class="calc" id="nutriStatus"></div>
     <div id="nutriResult"></div>
@@ -203,6 +225,10 @@
       <button type="button" class="photobtn" id="bmrCalcBtn" style="margin-bottom:0;">Порахувати й підставити</button>
     </div>
     <div class="barlbl">BMR — скільки калорій організм спалює в стані спокою за добу. Це число автоматично додається щодня до «активних» калорій (з фітнес-трекера чи вручну) для підрахунку загального спалення й балансу дня.</div>
+    <h2 style="margin-top:14px;">Норми вітамінів і мінералів</h2>
+    <button type="button" class="photobtn" id="microRdaToggle" style="margin-bottom:0;">Показати / редагувати норми</button>
+    <div id="microRdaBox" style="display:none;margin-top:10px;"></div>
+    <div class="barlbl">Стандартні денні норми для дорослої людини — підженіть під себе за потреби (вагітність, вік, стать тощо впливають на фактичну норму).</div>
     <h2 style="margin-top:14px;">Розпізнавання фото (Anthropic API)</h2>
     <div class="row">
       <label>API-ключ
@@ -733,6 +759,7 @@ document.getElementById("apiModel").addEventListener("change", () => {
 function exportData(){
   const days = {};
   const weights = {};
+  const micros = {};
   for(let i=0; i<localStorage.length; i++){
     const key = localStorage.key(i);
     if(key && key.startsWith("diary:")){
@@ -740,6 +767,8 @@ function exportData(){
     }else if(key && key.startsWith(WEIGHT_PREFIX)){
       const kg = parseFloat(localStorage.getItem(key));
       if(kg>0) weights[key.slice(WEIGHT_PREFIX.length)] = kg;
+    }else if(key && key.startsWith(MICRO_PREFIX)){
+      try{ micros[key.slice(MICRO_PREFIX.length)] = JSON.parse(localStorage.getItem(key)); }catch(e){}
     }
   }
   const backup = {
@@ -747,8 +776,10 @@ function exportData(){
     exportedAt: new Date().toISOString(),
     targets: { kcal: TGT_KCAL, prot: TGT_PROT, carbs: TGT_CARBS, fat: TGT_FAT },
     bmr: BMR,
+    microRDA,
     days,
-    weights
+    weights,
+    micros
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"});
   const url = URL.createObjectURL(blob);
@@ -781,6 +812,14 @@ function importData(file){
           if(kg>0) localStorage.setItem(WEIGHT_PREFIX + day, String(kg));
         });
       }
+      if(backup.micros && typeof backup.micros === "object"){
+        Object.keys(backup.micros).forEach(day => {
+          localStorage.setItem(MICRO_PREFIX + day, JSON.stringify(backup.micros[day]));
+        });
+      }
+      if(backup.microRDA && typeof backup.microRDA === "object"){
+        localStorage.setItem(MICRO_RDA_KEY, JSON.stringify(backup.microRDA));
+      }
       if(backup.targets && backup.targets.kcal>0 && backup.targets.prot>0){
         localStorage.setItem(TARGETS_KEY, JSON.stringify(backup.targets));
       }
@@ -790,6 +829,7 @@ function importData(file){
     }catch(e){ alert("Не вдалося зберегти дані на цьому пристрої."); return; }
     loadTargets();
     loadBMR();
+    loadMicroRDA();
     load();
     alert("Дані імпортовано.");
   };
@@ -1297,7 +1337,7 @@ function loadNutriCache(){
   }catch(e){}
   return null;
 }
-function renderNutriPanel(){
+function renderNutriAdvice(){
   const cached = loadNutriCache();
   const box = document.getElementById("nutriResult");
   box.innerHTML = "";
@@ -1327,7 +1367,7 @@ document.getElementById("nutriAnalyzeBtn").onclick = async () => {
   try{
     const text = await analyzeNutrition(apiKey, buildNutriPrompt(wd));
     try{ localStorage.setItem(NUTRI_KEY, JSON.stringify({ text, date: fmtDate(new Date()) })); }catch(e){}
-    renderNutriPanel();
+    renderNutriAdvice();
   }catch(err){
     console.error(err);
     statusEl.textContent = "";
@@ -1335,9 +1375,238 @@ document.getElementById("nutriAnalyzeBtn").onclick = async () => {
   }
 };
 
+// ---- Micronutrients (vitamins & minerals): daily norm vs fact ----
+const MICRO_DEFS = [
+  { key:"vitA",     label:"Вітамін A",       unit:"мкг", rda:900 },
+  { key:"vitC",     label:"Вітамін C",       unit:"мг",  rda:90 },
+  { key:"vitD",     label:"Вітамін D",       unit:"мкг", rda:15 },
+  { key:"vitB6",    label:"Вітамін B6",      unit:"мг",  rda:1.7 },
+  { key:"vitB12",   label:"Вітамін B12",     unit:"мкг", rda:2.4 },
+  { key:"folate",   label:"Фолієва к-та (B9)", unit:"мкг", rda:400 },
+  { key:"calcium",  label:"Кальцій",         unit:"мг",  rda:1000 },
+  { key:"iron",     label:"Залізо",          unit:"мг",  rda:18 },
+  { key:"magnesium",label:"Магній",          unit:"мг",  rda:400 },
+  { key:"zinc",     label:"Цинк",            unit:"мг",  rda:11 },
+  { key:"potassium",label:"Калій",           unit:"мг",  rda:3500 },
+  { key:"iodine",   label:"Йод",             unit:"мкг", rda:150 },
+];
+const MICRO_RDA_KEY = "calTracker:microRDA";
+const MICRO_PREFIX = "micros:";
+let microRDA = {};
+function loadMicroRDA(){
+  microRDA = {};
+  try{
+    const raw = localStorage.getItem(MICRO_RDA_KEY);
+    if(raw) microRDA = JSON.parse(raw) || {};
+  }catch(e){ microRDA = {}; }
+  const box = document.getElementById("microRdaBox");
+  box.innerHTML = "";
+  for(let i=0; i<MICRO_DEFS.length; i+=2){
+    const row = document.createElement("div"); row.className="row";
+    MICRO_DEFS.slice(i, i+2).forEach(def => {
+      const label = document.createElement("label");
+      label.textContent = `${def.label}, ${def.unit}`;
+      const inp = document.createElement("input");
+      inp.type = "number"; inp.step = "0.1"; inp.min = "0";
+      inp.id = "rda_"+def.key;
+      inp.value = getMicroRda(def.key);
+      inp.addEventListener("change", saveMicroRDA);
+      label.appendChild(inp);
+      row.appendChild(label);
+    });
+    box.appendChild(row);
+  }
+}
+function getMicroRda(key){
+  const v = microRDA[key];
+  if(v>0) return v;
+  const def = MICRO_DEFS.find(d => d.key===key);
+  return def ? def.rda : 0;
+}
+function saveMicroRDA(){
+  MICRO_DEFS.forEach(def => {
+    const el = document.getElementById("rda_"+def.key);
+    const v = parseFloat(el.value);
+    if(v>0) microRDA[def.key] = v;
+  });
+  try{ localStorage.setItem(MICRO_RDA_KEY, JSON.stringify(microRDA)); }catch(e){}
+  if(document.getElementById("nutriBox").classList.contains("show")) renderMicroMeters();
+}
+document.getElementById("microRdaToggle").onclick = () => {
+  const el = document.getElementById("microRdaBox");
+  el.style.display = el.style.display==="block" ? "none" : "block";
+};
+
+function microStatus(pct){
+  if(pct>=100) return { fill:"var(--green)", soft:"var(--green-soft)" };
+  if(pct>=50) return { fill:"var(--amber)", soft:"var(--amber-soft)" };
+  return { fill:"var(--red)", soft:"var(--red-soft)" };
+}
+function getDayMicros(dayStr){
+  try{
+    const raw = localStorage.getItem(MICRO_PREFIX+dayStr);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return null;
+}
+function microScore(values){
+  const pcts = MICRO_DEFS.map(def => Math.min(100, ((values[def.key]||0)/getMicroRda(def.key))*100));
+  return Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length);
+}
+function buildMicroPrompt(dayStr, entries){
+  const lines = entries.map(e => `- ${e.name}${e.detail?` (${e.detail})`:""}: ${e.kcal} ккал, білок ${e.prot}г, вуглеводи ${e.carbs||0}г, жири ${e.fat||0}г`).join("\n");
+  const keys = MICRO_DEFS.map(d => `"${d.key}"`).join(", ");
+  return `Ось усе, що користувач з'їв за ${dayStr}:
+${lines}
+
+Оціни орієнтовний вміст вітамінів і мінералів у цьому раціоні на основі типового складу перелічених продуктів. Дай відповідь СУВОРО у вигляді одного JSON-об'єкта з числовими значеннями (без одиниць, без тексту до чи після), з точно такими ключами: ${keys}.
+Одиниці для кожного ключа: vitA(мкг), vitC(мг), vitD(мкг), vitB6(мг), vitB12(мкг), folate(мкг), calcium(мг), iron(мг), magnesium(мг), zinc(мг), potassium(мг), iodine(мкг). Якщо якогось продукту немає даних — дай найкращу орієнтовну оцінку, не нуль за замовчуванням, окрім дійсно відсутніх нутрієнтів (напр. вітамін C у рибі).`;
+}
+async function analyzeMicros(apiKey, promptText){
+  const text = await analyzeNutrition(apiKey, promptText);
+  const match = text.match(/\{[\s\S]*\}/);
+  if(!match) throw new Error("Не вдалося розпізнати відповідь моделі");
+  const parsed = JSON.parse(match[0]);
+  const values = {};
+  MICRO_DEFS.forEach(def => { values[def.key] = typeof parsed[def.key]==="number" ? parsed[def.key] : 0; });
+  return values;
+}
+function renderMicroMeters(){
+  const dayStr = dkey(curDate);
+  document.getElementById("microDayLabel").textContent = `Факт за: ${fmtDate(curDate)}`;
+  const data = getDayMicros(dayStr);
+  const btn = document.getElementById("microCalcBtn");
+  btn.textContent = data ? "🧪 Порахувати факт за цей день заново" : "🧪 Порахувати факт за цей день";
+  const box = document.getElementById("microMeters");
+  box.innerHTML = "";
+  if(!data){
+    box.innerHTML = '<div class="empty">Факт ще не порахований для цього дня.</div>';
+    return;
+  }
+  MICRO_DEFS.forEach(def => {
+    const val = data.values[def.key] || 0;
+    const rda = getMicroRda(def.key);
+    const pct = rda>0 ? (val/rda*100) : 0;
+    const st = microStatus(pct);
+    const row = document.createElement("div"); row.className="micrometer";
+    const top = document.createElement("div"); top.className="micro-top";
+    const lbl = document.createElement("span"); lbl.className="micro-label"; lbl.textContent = def.label;
+    const valEl = document.createElement("span"); valEl.className="micro-val";
+    valEl.textContent = `${val.toFixed(1)} / ${rda} ${def.unit} · ${Math.round(pct)}%`;
+    valEl.style.color = st.fill;
+    top.appendChild(lbl); top.appendChild(valEl);
+    const track = document.createElement("div"); track.className="micro-track"; track.style.background = st.soft;
+    const fill = document.createElement("div"); fill.className="micro-fill";
+    fill.style.width = Math.min(100, pct)+"%"; fill.style.background = st.fill;
+    track.appendChild(fill);
+    row.appendChild(top); row.appendChild(track);
+    box.appendChild(row);
+  });
+  const meta = document.createElement("div"); meta.className="nutrimeta";
+  meta.textContent = `Порахувано: ${data.computedAt}`;
+  box.appendChild(meta);
+}
+document.getElementById("microCalcBtn").onclick = async () => {
+  const apiKey = localStorage.getItem(API_KEY_KEY) || "";
+  const statusEl = document.getElementById("microStatus");
+  if(!apiKey){
+    openPanel("settingsBox");
+    alert("Спершу вкажіть Anthropic API-ключ у налаштуваннях (⚙), щоб рахувати вітаміни й мінерали.");
+    return;
+  }
+  const dayStr = dkey(curDate);
+  let data;
+  try{ const raw = localStorage.getItem("diary:"+dayStr); data = raw ? JSON.parse(raw) : null; }catch(e){ data = null; }
+  const entries = (data && data.entries) || [];
+  if(entries.length===0){
+    statusEl.textContent = "Немає записів за цей день — спершу додайте їжу.";
+    return;
+  }
+  statusEl.textContent = "Рахую вітаміни й мінерали за день…";
+  try{
+    const values = await analyzeMicros(apiKey, buildMicroPrompt(dayStr, entries));
+    try{ localStorage.setItem(MICRO_PREFIX+dayStr, JSON.stringify({ values, computedAt: fmtDate(new Date()) })); }catch(e){}
+    statusEl.textContent = "";
+    renderMicroMeters();
+    renderMicroDayList();
+    renderMicroWeekList();
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = "";
+    alert("Не вдалося порахувати: " + (err.message || err));
+  }
+};
+function renderMicroDayList(){
+  const box = document.getElementById("microDayList");
+  box.innerHTML = "";
+  const rows = [];
+  for(let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    if(!key || !key.startsWith(MICRO_PREFIX)) continue;
+    let data;
+    try{ data = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
+    if(!data || !data.values) continue;
+    rows.push({ dayStr: key.slice(MICRO_PREFIX.length), score: microScore(data.values) });
+  }
+  if(rows.length===0){ box.innerHTML = '<div class="empty">Ще немає порахованих днів</div>'; return; }
+  rows.sort((a,b) => b.dayStr.localeCompare(a.dayStr));
+  rows.forEach(r => {
+    const date = dayKeyToDate(r.dayStr);
+    const btn = document.createElement("button"); btn.className="histrow"; btn.type="button";
+    const hd = document.createElement("div"); hd.className="hd"; hd.textContent = fmtDate(date);
+    const hn = document.createElement("div"); hn.className="hn";
+    const st = microStatus(r.score);
+    const badge = document.createElement("span"); badge.className="scorebadge";
+    badge.style.background = st.soft; badge.style.color = st.fill;
+    badge.textContent = r.score+"%";
+    hn.appendChild(badge);
+    btn.appendChild(hd); btn.appendChild(hn);
+    btn.onclick = () => { curDate = date; renderMicroMeters(); };
+    box.appendChild(btn);
+  });
+}
+function renderMicroWeekList(){
+  const box = document.getElementById("microWeekList");
+  box.innerHTML = "";
+  const buckets = {};
+  for(let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    if(!key || !key.startsWith(MICRO_PREFIX)) continue;
+    let data;
+    try{ data = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
+    if(!data || !data.values) continue;
+    const dayStr = key.slice(MICRO_PREFIX.length);
+    const wk = weekMondayKey(dayStr);
+    (buckets[wk] = buckets[wk] || []).push(microScore(data.values));
+  }
+  const keys = Object.keys(buckets).sort((a,b) => b.localeCompare(a));
+  if(keys.length===0){ box.innerHTML = '<div class="empty">Ще немає даних</div>'; return; }
+  keys.forEach(wk => {
+    const scores = buckets[wk];
+    const avg = Math.round(scores.reduce((a,b)=>a+b,0)/scores.length);
+    const row = document.createElement("div"); row.className="sumrow";
+    const hd = document.createElement("div"); hd.className="hd"; hd.textContent = `${weekRangeLabel(wk)} · ${scores.length} дн.`;
+    const hn = document.createElement("div"); hn.className="hn";
+    const st = microStatus(avg);
+    const badge = document.createElement("span"); badge.className="scorebadge";
+    badge.style.background = st.soft; badge.style.color = st.fill;
+    badge.textContent = avg+"%";
+    hn.appendChild(badge);
+    row.appendChild(hd); row.appendChild(hn);
+    box.appendChild(row);
+  });
+}
+function renderNutriPanel(){
+  renderMicroMeters();
+  renderMicroDayList();
+  renderMicroWeekList();
+  renderNutriAdvice();
+}
+
 loadTargets();
 loadApiSettings();
 loadBMR();
+loadMicroRDA();
 load();
 if(navigator.storage && navigator.storage.persist){
   navigator.storage.persist().catch(()=>{});
