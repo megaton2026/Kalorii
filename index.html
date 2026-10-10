@@ -109,6 +109,7 @@
   .micro-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:0.82rem;margin-bottom:4px;}
   .micro-label{color:var(--ink);font-weight:500;}
   .micro-val{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .micro-source{font-size:0.72rem;color:var(--muted);margin-bottom:4px;}
   .micro-track{height:8px;border-radius:5px;overflow:hidden;}
   .micro-fill{height:100%;border-radius:5px;transition:width .3s;}
   .scorebadge{display:inline-flex;align-items:center;justify-content:center;min-width:2.6em;padding:2px 8px;border-radius:999px;font-size:0.82rem;font-weight:700;font-variant-numeric:tabular-nums;}
@@ -903,12 +904,14 @@ function selectFood(value){
   hideFoodSuggest();
   updCalc();
 }
+let foodSuggestHideTimer = null;
 function hideFoodSuggest(){
   const box = document.getElementById("foodSuggest");
   box.style.display = "none";
   box.innerHTML = "";
 }
 function showFoodSuggest(filterText){
+  if(foodSuggestHideTimer){ clearTimeout(foodSuggestHideTimer); foodSuggestHideTimer=null; }
   const box = document.getElementById("foodSuggest");
   const q = filterText.trim().toLowerCase();
   const all = Array.from(foodSel.options).map(o => ({ value:o.value, label:o.textContent }));
@@ -937,7 +940,7 @@ function showFoodSuggest(filterText){
 const foodSearchInput = document.getElementById("foodSearch");
 foodSearchInput.addEventListener("input", () => showFoodSuggest(foodSearchInput.value));
 foodSearchInput.addEventListener("focus", () => { foodSearchInput.select(); showFoodSuggest(""); });
-foodSearchInput.addEventListener("blur", () => setTimeout(hideFoodSuggest, 150));
+foodSearchInput.addEventListener("blur", () => { foodSuggestHideTimer = setTimeout(hideFoodSuggest, 150); });
 foodSearchInput.addEventListener("keydown", (e) => {
   if(e.key === "Enter"){
     e.preventDefault();
@@ -1462,22 +1465,46 @@ function microScore(values){
 function buildMicroPrompt(dayStr, entries){
   const lines = entries.map(e => `- ${e.name}${e.detail?` (${e.detail})`:""}: ${e.kcal} ккал, білок ${e.prot}г, вуглеводи ${e.carbs||0}г, жири ${e.fat||0}г`).join("\n");
   const keys = MICRO_DEFS.map(d => `"${d.key}"`).join(", ");
-  return `Ось усе, що користувач з'їв за ${dayStr}:
+  return `Ось усе, що користувач з'їв за ${dayStr} — кожен рядок окрема страва:
 ${lines}
 
-Оціни орієнтовний вміст вітамінів і мінералів у цьому раціоні на основі типового складу перелічених продуктів. Дай відповідь СУВОРО у вигляді одного JSON-об'єкта з числовими значеннями (без одиниць, без тексту до чи після), з точно такими ключами: ${keys}.
-Одиниці для кожного ключа: vitA(мкг), vitC(мг), vitD(мкг), vitB6(мг), vitB12(мкг), folate(мкг), calcium(мг), iron(мг), magnesium(мг), zinc(мг), potassium(мг), iodine(мкг). Якщо якогось продукту немає даних — дай найкращу орієнтовну оцінку, не нуль за замовчуванням, окрім дійсно відсутніх нутрієнтів (напр. вітамін C у рибі).`;
+Для КОЖНОЇ страви зі списку вище окремо оціни орієнтовний вміст вітамінів і мінералів (на основі типового складу та зазначеної ваги/калорійності). Дай відповідь СУВОРО у вигляді JSON-масиву — по одному об'єкту на кожну страву з переліку, у тому ж порядку, з точно такою ж назвою в полі "name" — без markdown-розмітки, без пояснень, без тексту до чи після:
+[{"name":"...", ${keys.split(", ").map(k=>k+":число").join(", ")}}, ...]
+Одиниці (без них у числах): vitA(мкг), vitC(мг), vitD(мкг), vitB6(мг), vitB12(мкг), folate(мкг), calcium(мг), iron(мг), magnesium(мг), zinc(мг), potassium(мг), iodine(мкг). Якщо нутрієнта в страві практично немає — став 0, а не пропускай ключ.`;
 }
 async function analyzeMicros(apiKey, promptText){
   const text = await analyzeNutrition(apiKey, promptText);
-  const match = text.match(/\{[\s\S]*\}/);
+  const match = text.match(/\[[\s\S]*\]/);
   if(!match) throw new Error("Не вдалося розпізнати відповідь моделі");
   const parsed = JSON.parse(match[0]);
+  if(!Array.isArray(parsed)) throw new Error("Некоректна відповідь моделі");
+  const byDish = parsed.map(d => {
+    const row = { name: (d && d.name) || "Страва" };
+    MICRO_DEFS.forEach(def => { row[def.key] = (d && typeof d[def.key]==="number") ? d[def.key] : 0; });
+    return row;
+  });
   const values = {};
-  MICRO_DEFS.forEach(def => { values[def.key] = typeof parsed[def.key]==="number" ? parsed[def.key] : 0; });
-  return values;
+  MICRO_DEFS.forEach(def => { values[def.key] = byDish.reduce((s,d) => s+(d[def.key]||0), 0); });
+  return { values, byDish };
 }
-function buildMicroMetersInto(container, values){
+function topContributors(byDish, key, n){
+  if(!byDish || !byDish.length) return [];
+  return byDish.filter(d => (d[key]||0) > 0)
+    .sort((a,b) => (b[key]||0) - (a[key]||0))
+    .slice(0, n)
+    .map(d => d.name);
+}
+function mergeByDish(byDishLists){
+  const merged = {};
+  byDishLists.forEach(list => {
+    (list||[]).forEach(d => {
+      if(!merged[d.name]){ merged[d.name] = { name: d.name }; MICRO_DEFS.forEach(def => merged[d.name][def.key]=0); }
+      MICRO_DEFS.forEach(def => { merged[d.name][def.key] += d[def.key]||0; });
+    });
+  });
+  return Object.values(merged);
+}
+function buildMicroMetersInto(container, values, byDish){
   container.innerHTML = "";
   MICRO_DEFS.forEach(def => {
     const val = values[def.key] || 0;
@@ -1491,11 +1518,19 @@ function buildMicroMetersInto(container, values){
     valEl.textContent = `${val.toFixed(1)} / ${rda} ${def.unit} · ${Math.round(pct)}%`;
     valEl.style.color = st.fill;
     top.appendChild(lbl); top.appendChild(valEl);
+    const sources = topContributors(byDish, def.key, 2);
+    if(sources.length){
+      const src = document.createElement("div"); src.className="micro-source";
+      src.textContent = "з: " + sources.join(", ");
+      row.appendChild(top); row.appendChild(src);
+    }else{
+      row.appendChild(top);
+    }
     const track = document.createElement("div"); track.className="micro-track"; track.style.background = st.soft;
     const fill = document.createElement("div"); fill.className="micro-fill";
     fill.style.width = Math.min(100, pct)+"%"; fill.style.background = st.fill;
     track.appendChild(fill);
-    row.appendChild(top); row.appendChild(track);
+    row.appendChild(track);
     container.appendChild(row);
   });
 }
@@ -1510,7 +1545,7 @@ function renderMicroMeters(){
     box.innerHTML = '<div class="empty">Факт ще не порахований для цього дня.</div>';
     return;
   }
-  buildMicroMetersInto(box, data.values);
+  buildMicroMetersInto(box, data.values, data.byDish);
   const meta = document.createElement("div"); meta.className="nutrimeta";
   meta.textContent = `Порахувано: ${data.computedAt}`;
   box.appendChild(meta);
@@ -1533,8 +1568,8 @@ document.getElementById("microCalcBtn").onclick = async () => {
   }
   statusEl.textContent = "Рахую вітаміни й мінерали за день…";
   try{
-    const values = await analyzeMicros(apiKey, buildMicroPrompt(dayStr, entries));
-    try{ localStorage.setItem(MICRO_PREFIX+dayStr, JSON.stringify({ values, computedAt: fmtDate(new Date()) })); }catch(e){}
+    const result = await analyzeMicros(apiKey, buildMicroPrompt(dayStr, entries));
+    try{ localStorage.setItem(MICRO_PREFIX+dayStr, JSON.stringify({ values: result.values, byDish: result.byDish, computedAt: fmtDate(new Date()) })); }catch(e){}
     statusEl.textContent = "";
     renderMicroMeters();
     renderMicroDayList();
@@ -1586,7 +1621,7 @@ function renderMicroWeekList(){
     if(!data || !data.values) continue;
     const dayStr = key.slice(MICRO_PREFIX.length);
     const wk = weekMondayKey(dayStr);
-    (buckets[wk] = buckets[wk] || []).push(data.values);
+    (buckets[wk] = buckets[wk] || []).push(data);
   }
   const keys = Object.keys(buckets).sort((a,b) => b.localeCompare(a));
   if(keys.length===0){ box.innerHTML = '<div class="empty">Ще немає даних</div>'; return; }
@@ -1594,17 +1629,18 @@ function renderMicroWeekList(){
   hint.textContent = "Тапніть на тиждень, щоб побачити середню добову норму/факт по кожному вітаміну й мінералу.";
   box.appendChild(hint);
   keys.forEach(wk => {
-    const valuesList = buckets[wk];
-    const scores = valuesList.map(microScore);
+    const dayList = buckets[wk];
+    const scores = dayList.map(d => microScore(d.values));
     const avg = Math.round(scores.reduce((a,b)=>a+b,0)/scores.length);
     const avgValues = {};
     MICRO_DEFS.forEach(def => {
-      avgValues[def.key] = valuesList.reduce((s,v) => s+(v[def.key]||0), 0) / valuesList.length;
+      avgValues[def.key] = dayList.reduce((s,d) => s+(d.values[def.key]||0), 0) / dayList.length;
     });
+    const mergedByDish = mergeByDish(dayList.map(d => d.byDish));
 
     const item = document.createElement("div"); item.className="microweekitem";
     const row = document.createElement("button"); row.className="microweekrow"; row.type="button";
-    const hd = document.createElement("div"); hd.className="hd"; hd.textContent = `${weekRangeLabel(wk)} · ${valuesList.length} дн.`;
+    const hd = document.createElement("div"); hd.className="hd"; hd.textContent = `${weekRangeLabel(wk)} · ${dayList.length} дн.`;
     const hn = document.createElement("div"); hn.className="hn";
     const arrow = document.createElement("span"); arrow.textContent = "▸";
     const st = microStatus(avg);
@@ -1615,7 +1651,7 @@ function renderMicroWeekList(){
     row.appendChild(hd); row.appendChild(hn);
 
     const detail = document.createElement("div"); detail.className="microweekdetail"; detail.style.display="none";
-    buildMicroMetersInto(detail, avgValues);
+    buildMicroMetersInto(detail, avgValues, mergedByDish);
 
     row.onclick = () => {
       const open = detail.style.display !== "none";
