@@ -112,6 +112,12 @@
   .micro-track{height:8px;border-radius:5px;overflow:hidden;}
   .micro-fill{height:100%;border-radius:5px;transition:width .3s;}
   .scorebadge{display:inline-flex;align-items:center;justify-content:center;min-width:2.6em;padding:2px 8px;border-radius:999px;font-size:0.82rem;font-weight:700;font-variant-numeric:tabular-nums;}
+  .microweekitem{border-bottom:1px solid var(--line);}
+  .microweekitem:last-child{border-bottom:none;}
+  .microweekrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 4px;cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:inherit;color:inherit;}
+  .microweekrow .hd{font-size:0.85rem;font-weight:500;}
+  .microweekrow .hn{display:flex;gap:8px;align-items:center;font-size:0.8rem;color:var(--muted);white-space:nowrap;}
+  .microweekdetail{padding:2px 4px 14px;}
   #microRdaBox .row{margin-bottom:6px;}
   #microRdaBox label{flex:1;font-size:0.76rem;color:var(--muted);}
 </style>
@@ -1471,20 +1477,10 @@ async function analyzeMicros(apiKey, promptText){
   MICRO_DEFS.forEach(def => { values[def.key] = typeof parsed[def.key]==="number" ? parsed[def.key] : 0; });
   return values;
 }
-function renderMicroMeters(){
-  const dayStr = dkey(curDate);
-  document.getElementById("microDayLabel").textContent = `Факт за: ${fmtDate(curDate)}`;
-  const data = getDayMicros(dayStr);
-  const btn = document.getElementById("microCalcBtn");
-  btn.textContent = data ? "🧪 Порахувати факт за цей день заново" : "🧪 Порахувати факт за цей день";
-  const box = document.getElementById("microMeters");
-  box.innerHTML = "";
-  if(!data){
-    box.innerHTML = '<div class="empty">Факт ще не порахований для цього дня.</div>';
-    return;
-  }
+function buildMicroMetersInto(container, values){
+  container.innerHTML = "";
   MICRO_DEFS.forEach(def => {
-    const val = data.values[def.key] || 0;
+    const val = values[def.key] || 0;
     const rda = getMicroRda(def.key);
     const pct = rda>0 ? (val/rda*100) : 0;
     const st = microStatus(pct);
@@ -1500,8 +1496,21 @@ function renderMicroMeters(){
     fill.style.width = Math.min(100, pct)+"%"; fill.style.background = st.fill;
     track.appendChild(fill);
     row.appendChild(top); row.appendChild(track);
-    box.appendChild(row);
+    container.appendChild(row);
   });
+}
+function renderMicroMeters(){
+  const dayStr = dkey(curDate);
+  document.getElementById("microDayLabel").textContent = `Факт за: ${fmtDate(curDate)}`;
+  const data = getDayMicros(dayStr);
+  const btn = document.getElementById("microCalcBtn");
+  btn.textContent = data ? "🧪 Порахувати факт за цей день заново" : "🧪 Порахувати факт за цей день";
+  const box = document.getElementById("microMeters");
+  if(!data){
+    box.innerHTML = '<div class="empty">Факт ще не порахований для цього дня.</div>';
+    return;
+  }
+  buildMicroMetersInto(box, data.values);
   const meta = document.createElement("div"); meta.className="nutrimeta";
   meta.textContent = `Порахувано: ${data.computedAt}`;
   box.appendChild(meta);
@@ -1577,23 +1586,45 @@ function renderMicroWeekList(){
     if(!data || !data.values) continue;
     const dayStr = key.slice(MICRO_PREFIX.length);
     const wk = weekMondayKey(dayStr);
-    (buckets[wk] = buckets[wk] || []).push(microScore(data.values));
+    (buckets[wk] = buckets[wk] || []).push(data.values);
   }
   const keys = Object.keys(buckets).sort((a,b) => b.localeCompare(a));
   if(keys.length===0){ box.innerHTML = '<div class="empty">Ще немає даних</div>'; return; }
+  const hint = document.createElement("div"); hint.className="barlbl";
+  hint.textContent = "Тапніть на тиждень, щоб побачити середню добову норму/факт по кожному вітаміну й мінералу.";
+  box.appendChild(hint);
   keys.forEach(wk => {
-    const scores = buckets[wk];
+    const valuesList = buckets[wk];
+    const scores = valuesList.map(microScore);
     const avg = Math.round(scores.reduce((a,b)=>a+b,0)/scores.length);
-    const row = document.createElement("div"); row.className="sumrow";
-    const hd = document.createElement("div"); hd.className="hd"; hd.textContent = `${weekRangeLabel(wk)} · ${scores.length} дн.`;
+    const avgValues = {};
+    MICRO_DEFS.forEach(def => {
+      avgValues[def.key] = valuesList.reduce((s,v) => s+(v[def.key]||0), 0) / valuesList.length;
+    });
+
+    const item = document.createElement("div"); item.className="microweekitem";
+    const row = document.createElement("button"); row.className="microweekrow"; row.type="button";
+    const hd = document.createElement("div"); hd.className="hd"; hd.textContent = `${weekRangeLabel(wk)} · ${valuesList.length} дн.`;
     const hn = document.createElement("div"); hn.className="hn";
+    const arrow = document.createElement("span"); arrow.textContent = "▸";
     const st = microStatus(avg);
     const badge = document.createElement("span"); badge.className="scorebadge";
     badge.style.background = st.soft; badge.style.color = st.fill;
     badge.textContent = avg+"%";
-    hn.appendChild(badge);
+    hn.appendChild(badge); hn.appendChild(arrow);
     row.appendChild(hd); row.appendChild(hn);
-    box.appendChild(row);
+
+    const detail = document.createElement("div"); detail.className="microweekdetail"; detail.style.display="none";
+    buildMicroMetersInto(detail, avgValues);
+
+    row.onclick = () => {
+      const open = detail.style.display !== "none";
+      detail.style.display = open ? "none" : "block";
+      arrow.textContent = open ? "▸" : "▾";
+    };
+
+    item.appendChild(row); item.appendChild(detail);
+    box.appendChild(item);
   });
 }
 function renderNutriPanel(){
