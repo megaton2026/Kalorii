@@ -1377,7 +1377,9 @@ document.getElementById("nutriAnalyzeBtn").onclick = async () => {
   }
   statusEl.textContent = "Аналізую раціон за тиждень…";
   try{
-    const text = await analyzeNutrition(apiKey, buildNutriPrompt(wd));
+    const dishCount = Object.keys(wd.byDish).length;
+    const maxTokens = Math.min(6000, 3000 + dishCount*100);
+    const text = await analyzeNutrition(apiKey, buildNutriPrompt(wd), maxTokens);
     try{ localStorage.setItem(NUTRI_KEY, JSON.stringify({ text, date: fmtDate(new Date()) })); }catch(e){}
     renderNutriAdvice();
   }catch(err){
